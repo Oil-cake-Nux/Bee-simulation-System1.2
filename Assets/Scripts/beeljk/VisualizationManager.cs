@@ -1,62 +1,87 @@
-
-using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ljk
 {
     public class VisualizationManager : MonoBehaviour
     {
-        [Header("¿ÉÊÓ»¯¿ØÖÆ")]
+        [Header("å¯è§†åŒ–æ§åˆ¶")]
         public bool enableAllVisualization = true;
 
-        [Header("¹ÜÀíµÄ½Å±¾")]
+        [Header("ç®¡ç†è„šæœ¬")]
         public BeeSimulation beeSimulation;
         public BeeTargetController beeTargetController;
         public BeeSimulationManager beeSimulationManager;
 
-        [Header("UIÒıÓÃ")]
-        public UnityEngine.UI.Button toggleButton;
-        public UnityEngine.UI.Text buttonText;
+        [Header("UIå¼•ç”¨")]
+        public Button toggleButton;
+        public Text buttonText;
 
         private void Start()
         {
-            // ×Ô¶¯²éÕÒÏà¹Ø×é¼ş£¨Èç¹ûÎ´ÊÖ¶¯¸³Öµ£©
-            if (beeSimulation == null)
-                beeSimulation = FindObjectOfType<BeeSimulation>();
-            if (beeTargetController == null)
-                beeTargetController = FindObjectOfType<BeeTargetController>();
-            if (beeSimulationManager == null)
-                beeSimulationManager = FindObjectOfType<BeeSimulationManager>();
+            ResolveReferences();
 
-            // ÉèÖÃ°´Å¥µã»÷ÊÂ¼ş
             if (toggleButton != null)
             {
                 toggleButton.onClick.AddListener(ToggleAllVisualization);
             }
 
-            // ³õÊ¼»¯¿ÉÊÓ»¯×´Ì¬
-            UpdateAllVisualization();
-            UpdateButtonText();
+            ApplyVisualizationState(enableAllVisualization, false);
         }
 
-        /// <summary>
-        /// ÇĞ»»ËùÓĞ¿ÉÊÓ»¯×´Ì¬
-        /// </summary>
         public void ToggleAllVisualization()
         {
-            enableAllVisualization = !enableAllVisualization;
+            ApplyVisualizationState(!enableAllVisualization, true);
+        }
+
+        public void EnableAllVisualization()
+        {
+            ApplyVisualizationState(true, false);
+        }
+
+        public void DisableAllVisualization()
+        {
+            ApplyVisualizationState(false, false);
+        }
+
+        [ContextMenu("åˆ‡æ¢å¯è§†åŒ–")]
+        private void ToggleInEditor()
+        {
+            ToggleAllVisualization();
+        }
+
+        private void ResolveReferences()
+        {
+            if (beeSimulation == null)
+            {
+                beeSimulation = FindObjectOfType<BeeSimulation>();
+            }
+
+            if (beeTargetController == null)
+            {
+                beeTargetController = FindObjectOfType<BeeTargetController>();
+            }
+
+            if (beeSimulationManager == null)
+            {
+                beeSimulationManager = FindObjectOfType<BeeSimulationManager>();
+            }
+        }
+
+        private void ApplyVisualizationState(bool enabled, bool logChange)
+        {
+            enableAllVisualization = enabled;
             UpdateAllVisualization();
             UpdateButtonText();
 
-            Debug.Log($"ËùÓĞ¿ÉÊÓ»¯: {(enableAllVisualization ? "Turn on" : "Turn off")}");
+            if (logChange)
+            {
+                Debug.Log($"æ‰€æœ‰å¯è§†åŒ–: {(enableAllVisualization ? "å¼€å¯" : "å…³é—­")}");
+            }
         }
 
-        /// <summary>
-        /// ¸üĞÂËùÓĞ¿ÉÊÓ»¯×é¼ş×´Ì¬
-        /// </summary>
         private void UpdateAllVisualization()
         {
-            // ¸üĞÂ BeeSimulation µÄ¿ÉÊÓ»¯
             if (beeSimulation != null)
             {
                 beeSimulation.showDebugRays = enableAllVisualization;
@@ -64,58 +89,23 @@ namespace ljk
                 beeSimulation.showNoiseForce = enableAllVisualization;
             }
 
-            // ¸üĞÂ BeeSimulationManager µÄ¹ì¼£»æÖÆ
             if (beeSimulationManager != null)
             {
                 beeSimulationManager.drawTrajectory = enableAllVisualization;
 
-                // Èç¹û¹Ø±Õ¿ÉÊÓ»¯£¬Á¢¼´Çå³ı¹ì¼£
                 if (!enableAllVisualization && beeSimulationManager.trajectoryRenderer != null)
                 {
                     beeSimulationManager.trajectoryRenderer.positionCount = 0;
                 }
             }
-
-            // ×¢Òâ£ºBeeTargetController µÄ¿ÉÊÓ»¯Ö÷ÒªÔÚ OnDrawGizmosSelected ÖĞ
-            // ÕâÔÚ±à¼­Æ÷ÖĞÓĞĞ§£¬µ«ÔÚÔËĞĞÊ±ĞèÒªÆäËû´¦Àí·½Ê½
         }
 
-        /// <summary>
-        /// ¸üĞÂ°´Å¥ÎÄ±¾
-        /// </summary>
         private void UpdateButtonText()
         {
             if (buttonText != null)
             {
-                buttonText.text = enableAllVisualization ? "Turn off visualization" : "Turn on visualization";
+                buttonText.text = enableAllVisualization ? "å…³é—­å¯è§†åŒ–" : "å¼€å¯å¯è§†åŒ–";
             }
-        }
-
-        /// <summary>
-        /// Ç¿ÖÆ¿ªÆôËùÓĞ¿ÉÊÓ»¯
-        /// </summary>
-        public void EnableAllVisualization()
-        {
-            enableAllVisualization = true;
-            UpdateAllVisualization();
-            UpdateButtonText();
-        }
-
-        /// <summary>
-        /// Ç¿ÖÆ¹Ø±ÕËùÓĞ¿ÉÊÓ»¯
-        /// </summary>
-        public void DisableAllVisualization()
-        {
-            enableAllVisualization = false;
-            UpdateAllVisualization();
-            UpdateButtonText();
-        }
-
-        // ÔÚ±à¼­Æ÷ÖĞÒ²¿Éµ÷ÓÃ
-        [ContextMenu("ÇĞ»»¿ÉÊÓ»¯")]
-        private void ToggleInEditor()
-        {
-            ToggleAllVisualization();
         }
     }
 }

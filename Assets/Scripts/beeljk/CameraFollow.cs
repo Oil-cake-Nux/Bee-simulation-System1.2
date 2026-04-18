@@ -1,78 +1,113 @@
 using UnityEngine;
+
 namespace ljk
 {
     public class CameraFollow : MonoBehaviour
     {
-        [Header("目标设置")]
-        public Transform target; // 蜜蜂的Transform
-        public Vector3 worldOffset = new Vector3(0f, 5f, -10f); // 相机在世界坐标系下相对于目标的偏移量
+        public enum OffsetMode
+        {
+            Local = 0,
+            World = 1
+        }
+
+        [Header("跟随目标")]
+        public Transform target;
+        public Vector3 worldOffset = new Vector3(0f, 5f, -10f);
+        public OffsetMode offsetMode = OffsetMode.Local;
+        public bool useTargetYaw = true;
 
         [Header("跟随参数")]
-        public float followSpeed = 5f; // 跟随速度
-        public float lookAtSpeed = 10f; // 看向目标的速度
-        public bool lockRotation = true; // 是否锁定相机旋转
-
-        [Header("平滑参数")]
-        public bool smoothFollow = true; // 是否启用平滑跟随
-        public bool lookAtTarget = true; // 是否始终看向目标
+        public float followSpeed = 5f;
+        public float lookAtSpeed = 10f;
+        public bool lockRotation = true;
+        public bool smoothFollow = true;
+        public bool lookAtTarget = true;
 
         [Header("边界限制")]
-        public bool useBounds = false; // 是否使用边界限制
+        public bool useBounds = false;
         public Vector3 minBounds = new Vector3(-100f, 0f, -100f);
         public Vector3 maxBounds = new Vector3(100f, 50f, 100f);
 
-        private Vector3 desiredPosition; // 期望的相机位置
-        private Quaternion initialRotation; // 相机的初始旋转
+        private Vector3 desiredPosition;
+        private Quaternion initialRotation;
 
-        void Start()
+        private void Start()
         {
-            // 记录相机的初始旋转
             initialRotation = transform.rotation;
         }
 
-        void LateUpdate()
+        private void LateUpdate()
         {
-            if (target == null) return;
-
-            // 计算相机在世界坐标系下的目标位置
-            desiredPosition = target.position + worldOffset;
-
-            // 应用边界限制（如果启用）
-            if (useBounds)
+            if (target == null)
             {
-                desiredPosition.x = Mathf.Clamp(desiredPosition.x, minBounds.x, maxBounds.x);
-                desiredPosition.y = Mathf.Clamp(desiredPosition.y, minBounds.y, maxBounds.y);
-                desiredPosition.z = Mathf.Clamp(desiredPosition.z, minBounds.z, maxBounds.z);
+                return;
             }
 
-            // 平滑移动相机到目标位置
-            if (smoothFollow)
-            {
-                transform.position = Vector3.Lerp(transform.position, desiredPosition, followSpeed * Time.deltaTime);
-            }
-            else
-            {
-                transform.position = desiredPosition;
-            }
+            desiredPosition = target.position + ResolveOffset();
+            desiredPosition = ClampToBounds(desiredPosition);
+            transform.position = smoothFollow
+                ? Vector3.Lerp(transform.position, desiredPosition, followSpeed * Time.deltaTime)
+                : desiredPosition;
 
-            // 锁定相机旋转或看向目标
-            if (lockRotation)
-            {
-                transform.rotation = initialRotation;
-            }
-            else if (lookAtTarget)
-            {
-                Vector3 lookPos = target.position - transform.position;
-                Quaternion targetRotation = Quaternion.LookRotation(lookPos);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, lookAtSpeed * Time.deltaTime);
-            }
+            ApplyRotation();
         }
 
-        // 提供公共方法允许其他脚本改变相机偏移
         public void SetCameraOffset(Vector3 newOffset)
         {
             worldOffset = newOffset;
         }
+
+        private Vector3 ResolveOffset()
+        {
+            if (offsetMode == OffsetMode.World)
+            {
+                return worldOffset;
+            }
+
+            Quaternion offsetRotation = useTargetYaw
+                ? Quaternion.Euler(0f, target.eulerAngles.y, 0f)
+                : target.rotation;
+
+            return offsetRotation * worldOffset;
+        }
+
+        private Vector3 ClampToBounds(Vector3 position)
+        {
+            if (!useBounds)
+            {
+                return position;
+            }
+
+            position.x = Mathf.Clamp(position.x, minBounds.x, maxBounds.x);
+            position.y = Mathf.Clamp(position.y, minBounds.y, maxBounds.y);
+            position.z = Mathf.Clamp(position.z, minBounds.z, maxBounds.z);
+            return position;
+        }
+
+        private void ApplyRotation()
+        {
+            if (lookAtTarget)
+            {
+                Vector3 lookDirection = target.position - transform.position;
+                if (lookDirection.sqrMagnitude > 0.001f)
+                {
+                    Quaternion lookRotation = Quaternion.LookRotation(lookDirection.normalized, Vector3.up);
+                    if (lockRotation)
+                    {
+                        Vector3 euler = lookRotation.eulerAngles;
+                        lookRotation = Quaternion.Euler(initialRotation.eulerAngles.x, euler.y, initialRotation.eulerAngles.z);
+                    }
+
+                    transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, lookAtSpeed * Time.deltaTime);
+                }
+
+                return;
+            }
+
+            if (lockRotation)
+            {
+                transform.rotation = initialRotation;
+            }
+        }
     }
 }
-    

@@ -1,298 +1,516 @@
-
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace ljk {
+namespace ljk
+{
     public class BeeTargetController : MonoBehaviour
     {
+        [Header("基础引用")]
         public BeeSimulation beeSimulation;
-        // 目标相关参数
         public List<Transform> targets = new List<Transform>();
-        public float targetDetectionRadius = 20f;    // 目标检测半径
-        public float stayDuration = 2f;            // 目标点停留时间
-        public Transform currentTarget;           // 当前追踪目标
-        private float stayTimer;                   // 停留计时器
-        private List<Transform> inactiveTargets = new List<Transform>(); // 失活目标列表
 
-        [Header("目标到达参数")]
-        public float stoppingDistance = 1.5f;           // 停止距离
-        public float hoverHeight = 2f;                  // 悬停高度
-        public float hoverRadius = 1.5f;                // 悬停半径
-        public float hoverSpeed = 0.8f;                 // 悬停速度
-        public float hoverSmoothness = 2f;              // 悬停平滑度
-        public bool enableHover = false;                 // 是否启用悬停
+        [Header("目标搜索")]
+        public float targetDetectionRadius = 20f;
+        public float stayDuration = 2f;
+        public Transform currentTarget;
 
-        [Header("悬停行为参数")]
-        public float minHoverDistance = 0.3f;           // 最小悬停距离
-        public float maxHoverDistance = 3f;             // 最大悬停距离
-        public float heightAdjustSpeed = 1.5f;          // 高度调整速度
+        [Header("到达设置")]
+        public float stoppingDistance = 1.5f;
+        public float hoverHeight = 2f;
+        public float hoverRadius = 1.5f;
+        public float hoverSpeed = 0.8f;
+        public float hoverSmoothness = 2f;
+        public bool enableHover = false;
 
-        private bool isHovering = false;
-        private Vector3 hoverCenter;
-        private float hoverAngle = 0f;
-        private Vector3 currentHoverTarget;
-        private float currentHoverHeight;
+        [Header("悬停行为")]
+        public float minHoverDistance = 0.3f;
+        public float maxHoverDistance = 3f;
+        public float heightAdjustSpeed = 1.5f;
 
-        // 添加公共属性供外部访问
-        public bool IsHovering { get { return isHovering; } }
-        public Vector3 HoverCenter { get { return hoverCenter; } }
+        [Header("玩家采集")]
+        public bool enablePlayerCollect = true;
+        public float playerCollectTriggerRadius = 1.8f;
+        public float playerCollectMinHeight = 0.2f;
+        public float playerCollectMaxHeight = 4f;
+        public float playerCollectHeightOffset = 1.15f;
+        public float playerCollectDuration = 2.4f;
+        public float playerCollectForce = 4.8f;
+        public float playerCollectDamping = 1.5f;
+        public float playerCollectMicroHoverRadius = 0.08f;
+        public float playerCollectBobAmplitude = 0.05f;
+        public float playerCollectRearmDistance = 2.4f;
 
-        GameObject target2;
-        Transform t2t;
-        private void Start()
+        public bool IsHovering
         {
-            beeSimulation = GetComponent<BeeSimulation>();
-            ///以下为调试代码
+            get { return isHovering; }
         }
-        //private void Update()
-        //{
-        //    // 更新目标状态
-        //    UpdateTargetState();
 
-        //    // 计算并应用力
-        //    Vector3 seekForce = CalculateTargetSeekForce();
-        //    // 这里添加实际应用力的逻辑（示例）：
-        //    // velocity += seekForce * Time.deltaTime;
-        //    // transform.position += velocity * Time.deltaTime;
-        //}
+        public Vector3 HoverCenter
+        {
+            get { return hoverCenter; }
+        }
+
+        public bool HasActiveTarget
+        {
+            get { return currentTarget != null; }
+        }
+
+        public bool IsPlayerCollecting
+        {
+            get { return isPlayerCollecting; }
+        }
+
+        public Vector3 PlayerCollectPoint
+        {
+            get { return playerCollectPoint; }
+        }
+
+        private readonly List<Transform> inactiveTargets = new List<Transform>();
+        private float stayTimer = 0f;
+        private bool isHovering = false;
+        private Vector3 hoverCenter = Vector3.zero;
+        private float hoverOrbitAngle = 0f;
+        private Vector3 currentHoverTarget = Vector3.zero;
+        private float currentHoverHeight = 0f;
+        private bool isPlayerCollecting = false;
+        private Vector3 playerCollectPoint = Vector3.zero;
+        private float playerCollectTimer = 0f;
+        private float playerCollectPhase = 0f;
+        private Transform lastCollectedPlayerTarget;
+
+        private bool CanUseAutopilot
+        {
+            get { return beeSimulation != null && beeSimulation.UsesAutopilot; }
+        }
+
+        private void Awake()
+        {
+            if (beeSimulation == null)
+            {
+                beeSimulation = GetComponent<BeeSimulation>();
+            }
+        }
 
         public void UpdateTargetState()
         {
-            if (currentTarget != null)
+            if (CanUseAutopilot)
             {
-                float distance = Vector3.Distance(transform.position, currentTarget.position);
-
-                // 改进的悬停触发条件
-                if (distance <= stoppingDistance && enableHover && !isHovering)
-                {
-                    StartHovering();
-                }
-
-                if (isHovering)
-                {
-                    UpdateHoverBehavior();
-
-                    // 在悬停状态下累积停留时间
-                    stayTimer += Time.deltaTime;
-
-                    if (stayTimer >= stayDuration)
-                    {
-                        EndHovering();
-                    }
-                }
-                else
-                {
-                    // 离开到达范围时重置计时器
-                    if (distance > stoppingDistance * 1.2f)
-                    {
-                        stayTimer = 0f;
-                    }
-                }
+                UpdateAutopilotState();
+                return;
             }
-            else
+
+            UpdatePlayerCollectState();
+        }
+
+        private void UpdateAutopilotState()
+        {
+            if (isPlayerCollecting)
             {
-                // 没有当前目标时寻找新目标
+                ResetPlayerCollectState();
+            }
+
+            if (currentTarget == null)
+            {
                 FindNewTarget();
+                return;
             }
-        }
 
-        /// <summary>
-        /// 开始悬停行为
-        /// </summary>
-        private void StartHovering()
-        {
-            isHovering = true;
-            hoverCenter = currentTarget.position;
-            currentHoverHeight = hoverCenter.y + hoverHeight;
-            hoverAngle = Random.Range(0f, 360f);
+            float distance = Vector3.Distance(transform.position, currentTarget.position);
 
-            // 初始化悬停目标点
-            UpdateHoverTarget();
-
-            Debug.Log("开始悬停行为");
-        }
-
-        /// <summary>
-        /// 更新悬停行为
-        /// </summary>
-        private void UpdateHoverBehavior()
-        {
-            // 平滑调整悬停高度
-            float targetHeight = hoverCenter.y + hoverHeight;
-            currentHoverHeight = Mathf.Lerp(currentHoverHeight, targetHeight, Time.deltaTime * heightAdjustSpeed);
-
-            // 更新悬停角度
-            hoverAngle += hoverSpeed * Time.deltaTime;
-
-            // 更新悬停目标点
-            UpdateHoverTarget();
-
-            // 检查是否需要重新调整位置
-            float distanceToHoverTarget = Vector3.Distance(transform.position, currentHoverTarget);
-            if (distanceToHoverTarget < minHoverDistance)
+            if (enableHover && !isHovering && distance <= stoppingDistance)
             {
-                // 到达悬停点，选择新的悬停点
-                hoverAngle += 90f; // 跳转到下一个象限
-                UpdateHoverTarget();
+                StartHovering();
             }
-        }
 
-        private void UpdateHoverTarget()
-        {
-            // 计算圆周运动位置
-            float x = Mathf.Cos(hoverAngle) * hoverRadius;
-            float z = Mathf.Sin(hoverAngle) * hoverRadius;
-
-            currentHoverTarget = hoverCenter + new Vector3(x, currentHoverHeight - hoverCenter.y, z);
-        }
-
-        /// <summary>
-        /// 结束悬停行为
-        /// </summary>
-        private void EndHovering()
-        {
-            inactiveTargets.Add(currentTarget);
-            currentTarget = null;
-            stayTimer = 0f;
-            isHovering = false;
-            Debug.Log("结束悬停行为");
-        }
-
-        public void FindNewTarget()
-        {
-            Transform bestTarget = null;
-            float closestDistance = Mathf.Infinity;
-
-            foreach (Transform t in targets)
+            if (!isHovering)
             {
-                if (t == null || inactiveTargets.Contains(t)) continue;
-
-                Vector3 toTarget = t.position - transform.position;
-                float distance = toTarget.magnitude;
-
-                // 选择检测范围内最近的有效目标
-                if (distance <= targetDetectionRadius &&
-                    distance < closestDistance)
+                if (distance > stoppingDistance * 1.2f)
                 {
-                    closestDistance = distance;
-                    bestTarget = t;
+                    stayTimer = 0f;
                 }
+
+                return;
             }
 
-            currentTarget = bestTarget;
+            UpdateHoverBehavior();
+            stayTimer += Time.deltaTime;
+
+            if (stayTimer >= stayDuration)
+            {
+                EndHovering();
+            }
+        }
+
+        private void UpdatePlayerCollectState()
+        {
+            if (!enablePlayerCollect)
+            {
+                ResetPlayerCollectState();
+                currentTarget = null;
+                return;
+            }
+
+            ResetAutopilotHoverState();
+            TryRearmPlayerCollect();
+
+            if (isPlayerCollecting)
+            {
+                if (currentTarget == null)
+                {
+                    EndPlayerCollect(false);
+                    return;
+                }
+
+                UpdatePlayerCollectPoint(false);
+                playerCollectTimer += Time.deltaTime;
+
+                if (playerCollectTimer >= playerCollectDuration)
+                {
+                    EndPlayerCollect(true);
+                }
+
+                return;
+            }
+
+            currentTarget = FindBestPlayerCollectTarget();
+            if (currentTarget == null)
+            {
+                return;
+            }
+
+            if (CanStartPlayerCollect(currentTarget))
+            {
+                StartPlayerCollect(currentTarget);
+            }
         }
 
         public Vector3 CalculateTargetSeekForce()
         {
-            if (currentTarget == null) return Vector3.zero;
+            if (!CanUseAutopilot || currentTarget == null || beeSimulation == null)
+            {
+                return Vector3.zero;
+            }
 
-            // 悬停状态使用悬停力计算
             if (isHovering && enableHover)
             {
                 return CalculateHoverForce();
             }
 
-            Vector3 toTargetDir = currentTarget.position - transform.position;
-            float targetDistance = toTargetDir.magnitude;
-            Vector3 desiredDirection = toTargetDir.normalized;
-
-            // 改进的减速曲线 - 更平滑的减速
-            float desiredSpeed = beeSimulation.moveSpeed;
-
-            if (targetDistance < stoppingDistance)
+            Vector3 toTarget = currentTarget.position - transform.position;
+            float distance = toTarget.magnitude;
+            if (distance < 0.001f)
             {
-                // 在停止距离内，使用悬停速度
+                return Vector3.zero;
+            }
+
+            float desiredSpeed = beeSimulation.moveSpeed;
+            if (distance < stoppingDistance)
+            {
                 desiredSpeed = hoverSpeed;
             }
-            else if (targetDistance < beeSimulation.slowingRadius)
+            else if (distance < beeSimulation.slowingRadius)
             {
-                // 平滑减速过渡
-                float slowdownFactor = (targetDistance - stoppingDistance) /
-                                     (beeSimulation.slowingRadius - stoppingDistance);
-                slowdownFactor = Mathf.Clamp01(slowdownFactor);
-                // 使用缓动函数使减速更自然
+                float slowdownFactor = Mathf.InverseLerp(stoppingDistance, beeSimulation.slowingRadius, distance);
                 desiredSpeed = Mathf.Lerp(hoverSpeed, beeSimulation.moveSpeed, slowdownFactor * slowdownFactor);
             }
 
-            // 计算转向力
-            Vector3 desiredVelocity = desiredDirection * desiredSpeed;
+            Vector3 desiredVelocity = toTarget.normalized * desiredSpeed;
             Vector3 steeringForce = (desiredVelocity - beeSimulation.velocity) * beeSimulation.steeringPD_Kp;
-
-            // 距离因子 - 接近目标时减小力
-            float distanceFactor = Mathf.Clamp01(targetDistance / beeSimulation.slowingRadius);
-
-            return steeringForce * beeSimulation.targetAttractionWeight * (0.5f + distanceFactor * 0.5f);
+            return Vector3.ClampMagnitude(steeringForce * beeSimulation.targetAttractionWeight, beeSimulation.maxForce);
         }
 
-        /// <summary>
-        /// 计算悬停行为力
-        /// </summary>
+        public void FindNewTarget()
+        {
+            currentTarget = CanUseAutopilot ? FindClosestTarget(IsAutopilotTargetCandidate) : null;
+        }
+
+        private Transform FindBestPlayerCollectTarget()
+        {
+            return FindClosestTarget(IsPlayerCollectTargetCandidate);
+        }
+
+        private Transform FindClosestTarget(Predicate<Transform> candidateFilter)
+        {
+            Transform bestTarget = null;
+            float maxSqrDistance = targetDetectionRadius * targetDetectionRadius;
+            float closestSqrDistance = float.MaxValue;
+            Vector3 currentPosition = transform.position;
+
+            foreach (Transform candidate in targets)
+            {
+                if (candidate == null || (candidateFilter != null && !candidateFilter(candidate)))
+                {
+                    continue;
+                }
+
+                float sqrDistance = (candidate.position - currentPosition).sqrMagnitude;
+                if (sqrDistance > maxSqrDistance || sqrDistance >= closestSqrDistance)
+                {
+                    continue;
+                }
+
+                closestSqrDistance = sqrDistance;
+                bestTarget = candidate;
+            }
+
+            return bestTarget;
+        }
+
+        private bool IsAutopilotTargetCandidate(Transform candidate)
+        {
+            return !inactiveTargets.Contains(candidate);
+        }
+
+        private bool IsPlayerCollectTargetCandidate(Transform candidate)
+        {
+            return candidate != lastCollectedPlayerTarget;
+        }
+
+        private bool CanStartPlayerCollect(Transform candidate)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            Vector3 toTarget = transform.position - candidate.position;
+            float horizontalDistance = Vector3.ProjectOnPlane(toTarget, Vector3.up).magnitude;
+            float verticalOffset = toTarget.y;
+
+            return horizontalDistance <= playerCollectTriggerRadius &&
+                   verticalOffset >= playerCollectMinHeight &&
+                   verticalOffset <= playerCollectMaxHeight;
+        }
+
+        private void StartHovering()
+        {
+            if (currentTarget == null)
+            {
+                return;
+            }
+
+            isHovering = true;
+            stayTimer = 0f;
+            hoverCenter = currentTarget.position;
+            currentHoverHeight = hoverCenter.y + hoverHeight;
+            hoverOrbitAngle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+            UpdateHoverTarget(true);
+        }
+
+        private void UpdateHoverBehavior()
+        {
+            float targetHeight = hoverCenter.y + hoverHeight;
+            currentHoverHeight = Mathf.Lerp(currentHoverHeight, targetHeight, Time.deltaTime * heightAdjustSpeed);
+            hoverOrbitAngle += hoverSpeed * Time.deltaTime;
+
+            UpdateHoverTarget(false);
+
+            float distanceToHoverTarget = Vector3.Distance(transform.position, currentHoverTarget);
+            if (distanceToHoverTarget < minHoverDistance)
+            {
+                hoverOrbitAngle += Mathf.PI * 0.5f;
+                UpdateHoverTarget(true);
+            }
+        }
+
+        private void UpdateHoverTarget(bool snap)
+        {
+            Vector3 desiredOffset = new Vector3(
+                Mathf.Cos(hoverOrbitAngle) * hoverRadius,
+                currentHoverHeight - hoverCenter.y,
+                Mathf.Sin(hoverOrbitAngle) * hoverRadius
+            );
+
+            Vector3 desiredTarget = hoverCenter + desiredOffset;
+
+            if (snap)
+            {
+                currentHoverTarget = desiredTarget;
+                return;
+            }
+
+            currentHoverTarget = Vector3.Lerp(currentHoverTarget, desiredTarget, Time.deltaTime * hoverSmoothness);
+        }
+
         private Vector3 CalculateHoverForce()
         {
             Vector3 toHoverTarget = currentHoverTarget - transform.position;
-            float distanceToTarget = toHoverTarget.magnitude;
+            float distance = toHoverTarget.magnitude;
+            if (distance < 0.001f)
+            {
+                return Vector3.zero;
+            }
 
-            // 计算期望速度 - 基于距离的动态速度
             float desiredSpeed = hoverSpeed;
-            if (distanceToTarget < 1f)
+            if (distance < maxHoverDistance)
             {
-                desiredSpeed = Mathf.Lerp(0.1f, hoverSpeed, distanceToTarget);
+                desiredSpeed = Mathf.Lerp(0.1f, hoverSpeed, Mathf.Clamp01(distance / Mathf.Max(0.01f, maxHoverDistance)));
             }
 
-            Vector3 desiredDirection = toHoverTarget.normalized;
-            Vector3 desiredVelocity = desiredDirection * desiredSpeed;
-
-            // 改进的转向力计算 - 添加阻尼项
-            Vector3 velocityError = desiredVelocity - beeSimulation.velocity;
-            Vector3 steeringForce = velocityError * beeSimulation.steeringPD_Kp;
-
-            // 添加位置修正力 - 帮助蜜蜂保持在正确位置
+            Vector3 desiredVelocity = toHoverTarget.normalized * desiredSpeed;
+            Vector3 steeringForce = (desiredVelocity - beeSimulation.velocity) * beeSimulation.steeringPD_Kp;
             Vector3 positionCorrection = toHoverTarget * 0.5f;
+            Vector3 totalForce = (steeringForce + positionCorrection) * beeSimulation.targetAttractionWeight;
 
-            // 限制力的大小
-            float maxHoverForce = beeSimulation.maxForce * 0.3f;
-            Vector3 totalForce = (steeringForce + positionCorrection) * beeSimulation.targetAttractionWeight * 0.8f;
-
-            if (totalForce.magnitude > maxHoverForce)
-            {
-                totalForce = totalForce.normalized * maxHoverForce;
-            }
-
-            return totalForce;
+            return Vector3.ClampMagnitude(totalForce, beeSimulation.maxForce * 0.5f);
         }
 
-        // 改进可视化方法
-        public void OnDrawGizmosSelected()
+        public Vector3 CalculatePlayerCollectForce()
         {
-            //// 绘制检测范围
-            //Gizmos.color = Color.yellow;
-            //Gizmos.DrawWireSphere(transform.position, targetDetectionRadius);
+            if (beeSimulation == null || !isPlayerCollecting || currentTarget == null)
+            {
+                return Vector3.zero;
+            }
 
-            // 绘制当前目标
+            Vector3 toCollectPoint = playerCollectPoint - transform.position;
+            float distance = toCollectPoint.magnitude;
+
+            Vector3 desiredVelocity = Vector3.zero;
+            if (distance > 0.001f)
+            {
+                float approachSpeed = Mathf.Lerp(0.15f, hoverSpeed, Mathf.Clamp01(distance / Mathf.Max(0.01f, maxHoverDistance)));
+                desiredVelocity = toCollectPoint.normalized * approachSpeed;
+            }
+
+            Vector3 steeringForce = (desiredVelocity - beeSimulation.velocity) * playerCollectForce;
+            Vector3 positionCorrection = toCollectPoint * playerCollectForce * 0.35f;
+            Vector3 dampingForce = -beeSimulation.velocity * playerCollectDamping;
+            Vector3 totalForce = steeringForce + positionCorrection + dampingForce;
+
+            return Vector3.ClampMagnitude(totalForce, beeSimulation.maxForce * 0.85f);
+        }
+
+        private void StartPlayerCollect(Transform targetToCollect)
+        {
+            currentTarget = targetToCollect;
+            isPlayerCollecting = true;
+            playerCollectTimer = 0f;
+            playerCollectPhase = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+            hoverCenter = currentTarget.position;
+            UpdatePlayerCollectPoint(true);
+        }
+
+        private void UpdatePlayerCollectPoint(bool snap)
+        {
+            if (currentTarget == null)
+            {
+                return;
+            }
+
+            hoverCenter = currentTarget.position;
+            playerCollectPhase += Time.deltaTime * Mathf.Max(0.1f, hoverSpeed * 2.4f);
+
+            Vector3 microOffset = new Vector3(
+                Mathf.Sin(playerCollectPhase * 1.1f),
+                0f,
+                Mathf.Cos(playerCollectPhase * 0.9f)
+            ) * playerCollectMicroHoverRadius;
+
+            microOffset.y = Mathf.Sin(playerCollectPhase * 2.2f) * playerCollectBobAmplitude;
+
+            Vector3 desiredPoint = hoverCenter + Vector3.up * playerCollectHeightOffset + microOffset;
+
+            if (snap)
+            {
+                playerCollectPoint = desiredPoint;
+            }
+            else
+            {
+                playerCollectPoint = Vector3.Lerp(playerCollectPoint, desiredPoint, Time.deltaTime * hoverSmoothness * 2f);
+            }
+
+            currentHoverTarget = playerCollectPoint;
+            currentHoverHeight = playerCollectPoint.y;
+        }
+
+        private void EndPlayerCollect(bool markCollectedTarget)
+        {
+            if (markCollectedTarget)
+            {
+                lastCollectedPlayerTarget = currentTarget;
+            }
+
+            isPlayerCollecting = false;
+            playerCollectTimer = 0f;
+            playerCollectPoint = Vector3.zero;
+            currentTarget = null;
+        }
+
+        private void TryRearmPlayerCollect()
+        {
+            if (lastCollectedPlayerTarget == null)
+            {
+                return;
+            }
+
+            float distance = Vector3.Distance(transform.position, lastCollectedPlayerTarget.position);
+            if (distance > playerCollectRearmDistance)
+            {
+                lastCollectedPlayerTarget = null;
+            }
+        }
+
+        private void EndHovering()
+        {
             if (currentTarget != null)
             {
-                Gizmos.color = Color.red;
-                Gizmos.DrawLine(transform.position, currentTarget.position);
-
-                // 绘制停止距离
-                Gizmos.color = Color.green;
-                Gizmos.DrawWireSphere(currentTarget.position, stoppingDistance);
-
-                //// 绘制悬停区域
-                //if (enableHover)
-                //{
-                //    Gizmos.color = Color.blue;
-                //    Gizmos.DrawWireSphere(currentTarget.position + Vector3.up * hoverHeight, hoverRadius);
-
-                //    // 绘制当前悬停目标点
-                //    if (isHovering)
-                //    {
-                //        Gizmos.color = Color.cyan;
-                //        Gizmos.DrawSphere(currentHoverTarget, 0.2f);
-                //        Gizmos.DrawLine(transform.position, currentHoverTarget);
-                //    }
-                //}
+                inactiveTargets.Add(currentTarget);
             }
+
+            currentTarget = null;
+            stayTimer = 0f;
+            isHovering = false;
+        }
+
+        private void ResetAutopilotHoverState()
+        {
+            stayTimer = 0f;
+            isHovering = false;
+            hoverCenter = Vector3.zero;
+            currentHoverTarget = Vector3.zero;
+            currentHoverHeight = 0f;
+        }
+
+        private void ResetPlayerCollectState()
+        {
+            isPlayerCollecting = false;
+            playerCollectTimer = 0f;
+            playerCollectPoint = Vector3.zero;
+            lastCollectedPlayerTarget = null;
+            currentTarget = null;
+            ResetAutopilotHoverState();
+        }
+
+        public void OnDrawGizmosSelected()
+        {
+            if (currentTarget == null)
+            {
+                return;
+            }
+
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(transform.position, currentTarget.position);
+
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(currentTarget.position, stoppingDistance);
+
+            if (isPlayerCollecting)
+            {
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawSphere(playerCollectPoint, 0.15f);
+                Gizmos.DrawLine(transform.position, playerCollectPoint);
+                return;
+            }
+
+            if (!isHovering)
+            {
+                return;
+            }
+
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawSphere(currentHoverTarget, 0.15f);
+            Gizmos.DrawLine(transform.position, currentHoverTarget);
         }
     }
 }

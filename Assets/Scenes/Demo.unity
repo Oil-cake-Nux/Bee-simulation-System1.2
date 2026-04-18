@@ -3492,18 +3492,26 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      propertyPath: m_LocalScale.x
-      value: 0.4
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: ascendKey
+      value: 102
       objectReference: {fileID: 0}
-    - target: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      propertyPath: m_LocalScale.y
-      value: 0.4
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: controlMode
+      value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      propertyPath: m_LocalScale.z
-      value: 0.4
-      objectReference: {fileID: 0}
+    - target: {fileID: 3215944100509910883, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: targets.Array.data[0]
+      value: 
+      objectReference: {fileID: 964483058}
+    - target: {fileID: 3215944100509910883, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: targets.Array.data[1]
+      value: 
+      objectReference: {fileID: 2054666851}
+    - target: {fileID: 3215944100509910883, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: targets.Array.data[2]
+      value: 
+      objectReference: {fileID: 1962417843}
     - target: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
       propertyPath: m_LocalPosition.x
       value: 37.68
@@ -3544,10 +3552,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 5511287496697270401, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
       propertyPath: m_Name
       value: Bee
@@ -3555,24 +3559,17 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 5511287496697270401, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 325685023}
-    - targetCorrespondingSourceObject: {fileID: 5511287496697270401, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 325685022}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
 --- !u!1 &325685021 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5511287496697270401, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
   m_PrefabInstance: {fileID: 325685020}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &325685022
+--- !u!114 &325685022 stripped
 MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
+  m_CorrespondingSourceObject: {fileID: 3215944100509910883, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+  m_PrefabInstance: {fileID: 325685020}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 325685021}
   m_Enabled: 1
@@ -3580,28 +3577,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2bf5b9872818db2439cd3187b6c1c261, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  beeSimulation: {fileID: 0}
-  targets:
-  - {fileID: 964483058}
-  - {fileID: 2054666851}
-  - {fileID: 1962417843}
-  targetDetectionRadius: 50
-  stayDuration: 3
-  currentTarget: {fileID: 0}
-  stoppingDistance: 3
-  hoverHeight: 4
-  hoverRadius: 2
-  hoverSpeed: 0.3
-  hoverSmoothness: 2
-  enableHover: 1
-  minHoverDistance: 0.3
-  maxHoverDistance: 3
-  heightAdjustSpeed: 1.5
---- !u!114 &325685023
+--- !u!114 &325685023 stripped
 MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
+  m_CorrespondingSourceObject: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+  m_PrefabInstance: {fileID: 325685020}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 325685021}
   m_Enabled: 1
@@ -3609,47 +3588,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5bb4183264a9944192d07f4252ff886, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  beeRadius: 0.2
-  moveSpeed: 2
-  l: 0
-  oscillationForceWeight: 0.5
-  pitchAngle: 20
-  thrustFactor: 16.429
-  swayFactor: 0.765
-  oscillationFrequency: 1.5
-  targetHeight: 10
-  heightDampingFactor: 0.5
-  visualRange: 5
-  obstacleDetectionAngle: 50
-  obstacleAvoidanceWeight: 5
-  rayCount: 20
-  emergencyAvoidanceMultiplier: 1.3
-  groundAvoidanceHeight: 3
-  groundAvoidanceWeight: 8
-  groundLayerMask:
-    serializedVersion: 2
-    m_Bits: 8
-  avoidanceRollMaxAngle: 60
-  avoidanceRollSpeed: 3
-  rollRecoverySpeed: 2
-  enableAvoidanceRoll: 1
-  curlNoiseWeight: 1.5
-  enableCurlNoise: 1
-  noiseInfluenceRadius: 3
-  showDebugRays: 1
-  showForces: 1
-  showNoiseForce: 1
-  target: {fileID: 0}
-  targetAttractionWeight: 3
-  arrivalRadius: 3
-  slowingRadius: 2
-  bankingFactor: 1.5
-  maxForce: 7
-  steeringPD_Kp: 2.5
-  steeringPD_Kd: 0.8
-  maxSpeed: 3.5
-  minObstacleAvoidanceDistance: 1
-  velocity: {x: 0, y: 0, z: 0}
 --- !u!4 &325685025 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 3538720518518348129, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
@@ -14072,6 +14010,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   target: {fileID: 325685025}
   worldOffset: {x: 0, y: 2, z: -3}
+  offsetMode: 0
+  useTargetYaw: 1
   followSpeed: 5
   lookAtSpeed: 10
   lockRotation: 1
@@ -21349,10 +21289,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   beePrefab: {fileID: 325685021}
-  obstaclePrefab: {fileID: 0}
-  obstacleLow: 5
-  LowCount: 4
-  simulationAreaSize: {x: 80, y: 40, z: 80}
   drawTrajectory: 1
   trajectoryDuration: 10
   trajectoryColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
