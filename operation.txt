@@ -1,0 +1,7 @@
+cd /mnt/d/Unity\ Projects/Bee-simulation-System1.2
+
+tmux ls
+//进入Bee
+tmux attach -t Bee
+//新建并进入
+tmux new -s bee
