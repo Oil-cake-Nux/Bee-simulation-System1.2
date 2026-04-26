@@ -41,6 +41,10 @@ namespace ljk
         public float playerCollectBobAmplitude = 0.05f;
         public float playerCollectRearmDistance = 2.4f;
 
+        [Header("路线循环")]
+        public bool enableTargetCycleLoop = true;
+        public bool enableStableRouteReplay = true;
+
         public bool IsHovering
         {
             get { return isHovering; }
@@ -67,6 +71,8 @@ namespace ljk
         }
 
         private readonly List<Transform> inactiveTargets = new List<Transform>();
+        private readonly List<Transform> visitedTargetsThisCycle = new List<Transform>();
+        private readonly List<Transform> learnedRoute = new List<Transform>();
         private float stayTimer = 0f;
         private bool isHovering = false;
         private Vector3 hoverCenter = Vector3.zero;
@@ -78,6 +84,7 @@ namespace ljk
         private float playerCollectTimer = 0f;
         private float playerCollectPhase = 0f;
         private Transform lastCollectedPlayerTarget;
+        private int learnedRouteIndex = 0;
 
         private bool CanUseAutopilot
         {
@@ -222,7 +229,13 @@ namespace ljk
 
         public void FindNewTarget()
         {
-            currentTarget = CanUseAutopilot ? FindClosestTarget(IsAutopilotTargetCandidate) : null;
+            if (!CanUseAutopilot)
+            {
+                currentTarget = null;
+                return;
+            }
+
+            currentTarget = FindAutopilotTarget();
         }
 
         private Transform FindBestPlayerCollectTarget()
@@ -255,6 +268,73 @@ namespace ljk
             }
 
             return bestTarget;
+        }
+
+        private Transform FindAutopilotTarget()
+        {
+            Transform nextTarget = FindRouteReplayTarget();
+            if (nextTarget != null)
+            {
+                return nextTarget;
+            }
+
+            nextTarget = FindClosestTarget(IsAutopilotTargetCandidate);
+            if (nextTarget != null)
+            {
+                return nextTarget;
+            }
+
+            if (!enableTargetCycleLoop || inactiveTargets.Count == 0)
+            {
+                return null;
+            }
+
+            CompleteAutopilotCycle();
+
+            nextTarget = FindRouteReplayTarget();
+            if (nextTarget != null)
+            {
+                return nextTarget;
+            }
+
+            return FindClosestTarget(IsAutopilotTargetCandidate);
+        }
+
+        private Transform FindRouteReplayTarget()
+        {
+            if (!enableStableRouteReplay || learnedRoute.Count == 0)
+            {
+                return null;
+            }
+
+            int validCount = learnedRoute.Count;
+            for (int i = 0; i < validCount; i++)
+            {
+                int index = (learnedRouteIndex + i) % validCount;
+                Transform candidate = learnedRoute[index];
+                if (candidate == null || inactiveTargets.Contains(candidate))
+                {
+                    continue;
+                }
+
+                learnedRouteIndex = (index + 1) % validCount;
+                return candidate;
+            }
+
+            return null;
+        }
+
+        private void CompleteAutopilotCycle()
+        {
+            if (enableStableRouteReplay && visitedTargetsThisCycle.Count > 1)
+            {
+                learnedRoute.Clear();
+                learnedRoute.AddRange(visitedTargetsThisCycle);
+                learnedRouteIndex = 0;
+            }
+
+            inactiveTargets.Clear();
+            visitedTargetsThisCycle.Clear();
         }
 
         private bool IsAutopilotTargetCandidate(Transform candidate)
@@ -456,6 +536,11 @@ namespace ljk
             if (currentTarget != null)
             {
                 inactiveTargets.Add(currentTarget);
+
+                if (!visitedTargetsThisCycle.Contains(currentTarget))
+                {
+                    visitedTargetsThisCycle.Add(currentTarget);
+                }
             }
 
             currentTarget = null;
@@ -479,6 +564,10 @@ namespace ljk
             playerCollectPoint = Vector3.zero;
             lastCollectedPlayerTarget = null;
             currentTarget = null;
+            inactiveTargets.Clear();
+            visitedTargetsThisCycle.Clear();
+            learnedRoute.Clear();
+            learnedRouteIndex = 0;
             ResetAutopilotHoverState();
         }
 
