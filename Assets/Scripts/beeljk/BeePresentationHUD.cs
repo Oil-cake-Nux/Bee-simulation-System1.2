@@ -122,7 +122,12 @@ namespace ljk
                 return;
             }
 
-            Font font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            Font font = LoadBuiltinFont();
+            if (font == null)
+            {
+                Debug.LogError("BeePresentationHUD could not load a built-in UI font.");
+                return;
+            }
 
             GameObject canvasObject = new GameObject("PresentationCanvas");
             canvasObject.transform.SetParent(transform, false);
@@ -158,6 +163,27 @@ namespace ljk
             hintRect.pivot = new Vector2(0.5f, 0f);
             hintRect.sizeDelta = new Vector2(0f, 34f);
             hintRect.anchoredPosition = new Vector2(0f, 8f);
+        }
+
+        private static Font LoadBuiltinFont()
+        {
+            string[] fontCandidates = { "LegacyRuntime.ttf", "Arial.ttf" };
+            for (int i = 0; i < fontCandidates.Length; i++)
+            {
+                try
+                {
+                    Font font = Resources.GetBuiltinResource<Font>(fontCandidates[i]);
+                    if (font != null)
+                    {
+                        return font;
+                    }
+                }
+                catch (System.ArgumentException)
+                {
+                }
+            }
+
+            return null;
         }
 
         private Text CreateText(string objectName, Transform parent, Font font, int fontSize, TextAnchor alignment)

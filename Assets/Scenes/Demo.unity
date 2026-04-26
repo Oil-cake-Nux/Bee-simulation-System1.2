@@ -3500,6 +3500,22 @@ PrefabInstance:
       propertyPath: controlMode
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: runtimeVectorWidth
+      value: 0.012
+      objectReference: {fileID: 0}
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: runtimeNoiseProbeScale
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: runtimeForceVectorScale
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1668231624443404070, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
+      propertyPath: runtimeVelocityVectorScale
+      value: 0.1
+      objectReference: {fileID: 0}
     - target: {fileID: 3215944100509910883, guid: 2bf7b93a638c172459dc2305e5bdeb94, type: 3}
       propertyPath: targets.Array.data[0]
       value: 

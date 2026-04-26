@@ -82,6 +82,8 @@ namespace ljk
 
         private void UpdateAllVisualization()
         {
+            ResolveReferences();
+
             if (beeSimulation != null)
             {
                 beeSimulation.showDebugRays = enableAllVisualization;

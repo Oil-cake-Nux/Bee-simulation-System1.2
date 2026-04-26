@@ -112,6 +112,7 @@ namespace ljk
         private float playerCollectTimer = 0f;
         private float playerCollectPhase = 0f;
         private Transform lastCollectedPlayerTarget;
+        private int learnedRouteIndex = 0;
         private int collectedTargetCount = 0;
 
         private bool CanUseAutopilot

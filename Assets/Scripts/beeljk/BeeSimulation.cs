@@ -68,6 +68,13 @@ namespace ljk
         public bool showForces = true;
         public bool showNoiseForce = true;
 
+        [Header("运行时可视化")]
+        public float runtimeForceVectorScale = 0.2f;
+        public float runtimeVelocityVectorScale = 0.35f;
+        public float runtimeVectorWidth = 0.006f;
+        public float runtimeNoiseProbeSpacing = 1.4f;
+        public float runtimeNoiseProbeScale = 0.18f;
+
         [Header("目标跟踪")]
         public Transform target;
         public float targetAttractionWeight = 1.5f;
@@ -142,6 +149,13 @@ namespace ljk
         private Vector3 lastAvoidanceForce = Vector3.zero;
         private Vector3 lastNoiseForce = Vector3.zero;
         private Vector3 lastControlForce = Vector3.zero;
+        private Vector3 lastPlayerControlContribution = Vector3.zero;
+        private Vector3 lastGuidanceContribution = Vector3.zero;
+        private Vector3 lastGroundAvoidanceContribution = Vector3.zero;
+        private Vector3 lastObstacleAvoidanceContribution = Vector3.zero;
+        private Vector3 lastOscillationContribution = Vector3.zero;
+        private Vector3 lastNoiseContribution = Vector3.zero;
+        private Vector3 lastTotalForce = Vector3.zero;
         private Vector3 thrustAxis = Vector3.forward;
         private Vector3 liftAxis = Vector3.up;
         private Vector3 swayAxis = Vector3.right;
@@ -162,6 +176,18 @@ namespace ljk
         private float originalMaxSpeed = 0f;
         private Transform cachedVisualRoot;
         private Quaternion visualRootBaseRotation = Quaternion.identity;
+        private Transform runtimeVisualizationRoot;
+        private LineRenderer velocityVectorRenderer;
+        private LineRenderer playerControlVectorRenderer;
+        private LineRenderer guidanceVectorRenderer;
+        private LineRenderer obstacleVectorRenderer;
+        private LineRenderer groundVectorRenderer;
+        private LineRenderer oscillationVectorRenderer;
+        private LineRenderer noiseVectorRenderer;
+        private LineRenderer totalForceVectorRenderer;
+        private LineRenderer[] noiseProbeRenderers;
+
+        private const int RuntimeNoiseProbeGridSize = 3;
 
         private void Awake()
         {
@@ -196,6 +222,7 @@ namespace ljk
             }
 
             CurlNoiseField.UpdateTime();
+            UpdateRuntimeVisualization();
         }
 
         private void FixedUpdate()
@@ -220,12 +247,19 @@ namespace ljk
             Vector3 groundAvoidanceForce = UsesAutopilot ? CalculateGroundAvoidanceForce() : Vector3.zero;
             Vector3 controlForce = UsesAutopilot ? Vector3.zero : CalculatePlayerControlForce();
             Vector3 guidanceForce = CalculateGuidanceForce();
-            lastControlForce = controlForce + guidanceForce;
 
             float controlWeight = UsesAutopilot ? 0f : (IsPlayerCollecting ? 0.2f : 0.9f);
             float guidanceWeight = UsesAutopilot ? 1f : (IsPlayerCollecting ? 1.25f : 0f);
             float buzzWeight = UsesAutopilot ? oscillationForceWeight : Mathf.Max(1.2f, oscillationForceWeight * 2.4f);
             float noiseWeight = UsesAutopilot ? curlNoiseWeight : Mathf.Max(1.4f, curlNoiseWeight * 1.55f);
+
+            lastPlayerControlContribution = controlForce * controlWeight;
+            lastGuidanceContribution = guidanceForce * guidanceWeight;
+            lastGroundAvoidanceContribution = groundAvoidanceForce * 1.5f;
+            lastObstacleAvoidanceContribution = obstacleAvoidanceForce * obstacleAvoidanceWeight;
+            lastOscillationContribution = oscillationForce * buzzWeight;
+            lastNoiseContribution = curlNoiseForce * noiseWeight;
+            lastControlForce = lastPlayerControlContribution + lastGuidanceContribution;
 
             Vector3 totalForce = controlForce * controlWeight;
             totalForce += guidanceForce * guidanceWeight;
@@ -235,6 +269,7 @@ namespace ljk
             totalForce += curlNoiseForce * noiseWeight;
 
             totalForce = ClampForce(totalForce);
+            lastTotalForce = totalForce;
             ApplyFlightForces(totalForce);
 
             if (UsesAutopilot)
@@ -257,6 +292,156 @@ namespace ljk
             rb.angularDrag = 0f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.constraints = RigidbodyConstraints.FreezeRotation;
+        }
+
+        private void UpdateRuntimeVisualization()
+        {
+            bool showRuntimeForceVectors = showForces;
+            bool showRuntimeNoiseVectors = showNoiseForce && enableCurlNoise;
+
+            if (!showRuntimeForceVectors && !showRuntimeNoiseVectors)
+            {
+                SetRuntimeRendererVisible(velocityVectorRenderer, false);
+                SetRuntimeRendererVisible(playerControlVectorRenderer, false);
+                SetRuntimeRendererVisible(guidanceVectorRenderer, false);
+                SetRuntimeRendererVisible(obstacleVectorRenderer, false);
+                SetRuntimeRendererVisible(groundVectorRenderer, false);
+                SetRuntimeRendererVisible(oscillationVectorRenderer, false);
+                SetRuntimeRendererVisible(noiseVectorRenderer, false);
+                SetRuntimeRendererVisible(totalForceVectorRenderer, false);
+                SetNoiseProbeVisibility(false);
+                return;
+            }
+
+            EnsureRuntimeVisualizationObjects();
+
+            Vector3 origin = transform.position;
+            UpdateRuntimeVectorRenderer(velocityVectorRenderer, origin, velocity * runtimeVelocityVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(playerControlVectorRenderer, origin, lastPlayerControlContribution * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(guidanceVectorRenderer, origin, lastGuidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(obstacleVectorRenderer, origin, lastObstacleAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(groundVectorRenderer, origin, lastGroundAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(oscillationVectorRenderer, origin, lastOscillationContribution * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(noiseVectorRenderer, origin, lastNoiseContribution * runtimeForceVectorScale, showRuntimeForceVectors && showRuntimeNoiseVectors);
+            UpdateRuntimeVectorRenderer(totalForceVectorRenderer, origin, lastTotalForce * runtimeForceVectorScale, showRuntimeForceVectors);
+
+            UpdateRuntimeNoiseProbes(showRuntimeNoiseVectors);
+        }
+
+        private void EnsureRuntimeVisualizationObjects()
+        {
+            if (runtimeVisualizationRoot != null)
+            {
+                return;
+            }
+
+            GameObject root = new GameObject("RuntimeVisualization");
+            root.transform.SetParent(transform, false);
+            runtimeVisualizationRoot = root.transform;
+
+            velocityVectorRenderer = CreateRuntimeVectorRenderer("VelocityVector", new Color(0.2f, 0.6f, 1f, 0.95f), 1f);
+            playerControlVectorRenderer = CreateRuntimeVectorRenderer("PlayerControlVector", Color.white, 1f);
+            guidanceVectorRenderer = CreateRuntimeVectorRenderer("GuidanceVector", new Color(1f, 0.45f, 0.85f, 0.95f), 1f);
+            obstacleVectorRenderer = CreateRuntimeVectorRenderer("ObstacleAvoidanceVector", Color.yellow, 1f);
+            groundVectorRenderer = CreateRuntimeVectorRenderer("GroundAvoidanceVector", Color.magenta, 1f);
+            oscillationVectorRenderer = CreateRuntimeVectorRenderer("OscillationVector", new Color(1f, 0.5f, 0f, 0.95f), 1f);
+            noiseVectorRenderer = CreateRuntimeVectorRenderer("NoiseVector", Color.cyan, 1f);
+            totalForceVectorRenderer = CreateRuntimeVectorRenderer("TotalForceVector", new Color(0.3f, 1f, 0.35f, 0.95f), 1.15f);
+
+            noiseProbeRenderers = new LineRenderer[RuntimeNoiseProbeGridSize * RuntimeNoiseProbeGridSize];
+            for (int i = 0; i < noiseProbeRenderers.Length; i++)
+            {
+                noiseProbeRenderers[i] = CreateRuntimeVectorRenderer("NoiseProbe_" + i, new Color(0.35f, 1f, 1f, 0.65f), 0.55f);
+            }
+        }
+
+        private LineRenderer CreateRuntimeVectorRenderer(string objectName, Color color, float widthMultiplier)
+        {
+            GameObject lineObject = new GameObject(objectName);
+            lineObject.transform.SetParent(runtimeVisualizationRoot, false);
+
+            LineRenderer renderer = lineObject.AddComponent<LineRenderer>();
+            renderer.material = new Material(Shader.Find("Sprites/Default"));
+            renderer.useWorldSpace = true;
+            renderer.positionCount = 2;
+            renderer.startWidth = runtimeVectorWidth * widthMultiplier;
+            renderer.endWidth = runtimeVectorWidth * widthMultiplier;
+            renderer.startColor = color;
+            renderer.endColor = color;
+            renderer.enabled = false;
+            return renderer;
+        }
+
+        private void UpdateRuntimeVectorRenderer(LineRenderer renderer, Vector3 origin, Vector3 vector, bool visible)
+        {
+            if (renderer == null)
+            {
+                return;
+            }
+
+            if (!visible || vector.sqrMagnitude < 0.0004f)
+            {
+                renderer.enabled = false;
+                return;
+            }
+
+            Vector3 end = origin + vector;
+
+            renderer.enabled = true;
+            renderer.SetPosition(0, origin);
+            renderer.SetPosition(1, end);
+        }
+
+        private void SetRuntimeRendererVisible(LineRenderer renderer, bool visible)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = visible;
+            }
+        }
+
+        private void UpdateRuntimeNoiseProbes(bool visible)
+        {
+            if (noiseProbeRenderers == null)
+            {
+                return;
+            }
+
+            if (!visible)
+            {
+                SetNoiseProbeVisibility(false);
+                return;
+            }
+
+            int index = 0;
+            int halfGrid = RuntimeNoiseProbeGridSize / 2;
+            for (int z = -halfGrid; z <= halfGrid; z++)
+            {
+                for (int x = -halfGrid; x <= halfGrid; x++)
+                {
+                    Vector3 sampleOrigin = transform.position
+                        + Vector3.right * (x * runtimeNoiseProbeSpacing)
+                        + Vector3.forward * (z * runtimeNoiseProbeSpacing)
+                        + Vector3.up * 0.2f;
+
+                    Vector3 sampleForce = CurlNoiseField.GetCurlNoiseForce(sampleOrigin) * runtimeNoiseProbeScale;
+                    UpdateRuntimeVectorRenderer(noiseProbeRenderers[index], sampleOrigin, sampleForce, true);
+                    index++;
+                }
+            }
+        }
+
+        private void SetNoiseProbeVisibility(bool visible)
+        {
+            if (noiseProbeRenderers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < noiseProbeRenderers.Length; i++)
+            {
+                SetRuntimeRendererVisible(noiseProbeRenderers[i], visible);
+            }
         }
 
         private void CapturePlayerInput()
@@ -772,9 +957,13 @@ namespace ljk
             if (showForces)
             {
                 Debug.DrawRay(transform.position, velocity, Color.blue);
-                Debug.DrawRay(transform.position, lastControlForce, Color.white);
-                Debug.DrawRay(transform.position, lastAvoidanceForce, Color.yellow);
-                Debug.DrawRay(transform.position, lastNoiseForce, Color.cyan);
+                Debug.DrawRay(transform.position, lastPlayerControlContribution, Color.white);
+                Debug.DrawRay(transform.position, lastGuidanceContribution, new Color(1f, 0.45f, 0.85f));
+                Debug.DrawRay(transform.position, lastObstacleAvoidanceContribution, Color.yellow);
+                Debug.DrawRay(transform.position, lastGroundAvoidanceContribution, Color.magenta);
+                Debug.DrawRay(transform.position, lastOscillationContribution, new Color(1f, 0.5f, 0f));
+                Debug.DrawRay(transform.position, lastNoiseContribution, Color.cyan);
+                Debug.DrawRay(transform.position, lastTotalForce, new Color(0.3f, 1f, 0.35f));
             }
         }
     }
