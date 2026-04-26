@@ -21,6 +21,12 @@ namespace ljk
         private readonly List<Vector3> trajectoryPoints = new List<Vector3>();
         private const float TrajectoryUpdateInterval = 0.1f;
         private float lastTrajectoryUpdateTime;
+        private bool demoPresentationEnabled = false;
+
+        public int TrajectoryPointCount
+        {
+            get { return trajectoryPoints.Count; }
+        }
 
         private void Start()
         {
@@ -35,6 +41,11 @@ namespace ljk
 
         private void Update()
         {
+            if (beeInstance == null)
+            {
+                ResolveBeeInstance();
+            }
+
             if (!drawTrajectory || beeInstance == null)
             {
                 return;
@@ -95,9 +106,8 @@ namespace ljk
             trajectoryRenderer.startWidth = 0.03f;
             trajectoryRenderer.endWidth = 0.01f;
             trajectoryRenderer.material = new Material(Shader.Find("Sprites/Default"));
-            trajectoryRenderer.startColor = trajectoryColor;
-            trajectoryRenderer.endColor = new Color(trajectoryColor.r, trajectoryColor.g, trajectoryColor.b, 0.2f);
             trajectoryRenderer.useWorldSpace = true;
+            ApplyTrajectoryStyle();
 
             trajectoryPoints.Clear();
             trajectoryPoints.Add(beeInstance.transform.position);
@@ -128,6 +138,41 @@ namespace ljk
             {
                 trajectoryRenderer.SetPosition(i, trajectoryPoints[i]);
             }
+        }
+
+        public void ClearTrajectory()
+        {
+            trajectoryPoints.Clear();
+
+            if (trajectoryRenderer != null && beeInstance != null)
+            {
+                trajectoryPoints.Add(beeInstance.transform.position);
+                trajectoryRenderer.positionCount = 1;
+                trajectoryRenderer.SetPosition(0, beeInstance.transform.position);
+            }
+        }
+
+        public void ApplyPresentationPreset(bool enableDemoPresentation)
+        {
+            demoPresentationEnabled = enableDemoPresentation;
+            trajectoryDuration = enableDemoPresentation ? 18f : 10f;
+            trajectoryColor = enableDemoPresentation ? new Color(1f, 0.7f, 0.15f, 1f) : Color.yellow;
+            ApplyTrajectoryStyle();
+        }
+
+        private void ApplyTrajectoryStyle()
+        {
+            if (trajectoryRenderer == null)
+            {
+                return;
+            }
+
+            float startWidth = demoPresentationEnabled ? 0.06f : 0.03f;
+            float endWidth = demoPresentationEnabled ? 0.02f : 0.01f;
+            trajectoryRenderer.startWidth = startWidth;
+            trajectoryRenderer.endWidth = endWidth;
+            trajectoryRenderer.startColor = trajectoryColor;
+            trajectoryRenderer.endColor = new Color(trajectoryColor.r, trajectoryColor.g, trajectoryColor.b, 0.2f);
         }
     }
 }

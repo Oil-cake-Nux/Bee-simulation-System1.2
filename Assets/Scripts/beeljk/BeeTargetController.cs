@@ -65,6 +65,34 @@ namespace ljk
             get { return isPlayerCollecting; }
         }
 
+        public string CurrentStateLabel
+        {
+            get
+            {
+                if (isPlayerCollecting)
+                {
+                    return "悬停采集";
+                }
+
+                if (CanUseAutopilot && isHovering)
+                {
+                    return "目标悬停";
+                }
+
+                if (currentTarget != null)
+                {
+                    return CanUseAutopilot ? "寻花中" : "接近采集点";
+                }
+
+                return CanUseAutopilot ? "自动巡航" : "手动巡航";
+            }
+        }
+
+        public int CollectedTargetCount
+        {
+            get { return collectedTargetCount; }
+        }
+
         public Vector3 PlayerCollectPoint
         {
             get { return playerCollectPoint; }
@@ -84,7 +112,7 @@ namespace ljk
         private float playerCollectTimer = 0f;
         private float playerCollectPhase = 0f;
         private Transform lastCollectedPlayerTarget;
-        private int learnedRouteIndex = 0;
+        private int collectedTargetCount = 0;
 
         private bool CanUseAutopilot
         {
@@ -509,6 +537,7 @@ namespace ljk
             if (markCollectedTarget)
             {
                 lastCollectedPlayerTarget = currentTarget;
+                collectedTargetCount++;
             }
 
             isPlayerCollecting = false;

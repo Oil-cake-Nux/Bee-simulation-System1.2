@@ -88,6 +88,49 @@ namespace ljk
             get { return controlMode == FlightControlMode.AutopilotTargets; }
         }
 
+        public float CurrentSpeed
+        {
+            get { return velocity.magnitude; }
+        }
+
+        public float HorizontalSpeed
+        {
+            get { return Vector3.ProjectOnPlane(velocity, Vector3.up).magnitude; }
+        }
+
+        public float CurrentAltitude
+        {
+            get { return transform.position.y; }
+        }
+
+        public float DistanceToTarget
+        {
+            get
+            {
+                if (beeTarget == null || beeTarget.currentTarget == null)
+                {
+                    return -1f;
+                }
+
+                return Vector3.Distance(transform.position, beeTarget.currentTarget.position);
+            }
+        }
+
+        public float CurrentVisualPitch
+        {
+            get { return visualPitch; }
+        }
+
+        public float CurrentVisualRoll
+        {
+            get { return visualRoll; }
+        }
+
+        public string CurrentFlightModeLabel
+        {
+            get { return UsesAutopilot ? "自动飞行" : "手动飞行"; }
+        }
+
         private bool IsPlayerCollecting
         {
             get { return !UsesAutopilot && beeTarget != null && beeTarget.IsPlayerCollecting; }
