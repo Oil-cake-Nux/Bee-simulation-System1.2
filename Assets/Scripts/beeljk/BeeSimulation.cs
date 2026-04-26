@@ -695,15 +695,17 @@ namespace ljk
             Vector3 localVelocity = transform.InverseTransformDirection(velocity);
             float normalizedVerticalSpeed = Mathf.Clamp(localVelocity.y / Mathf.Max(0.01f, maxClimbSpeed), -1f, 1f);
             float normalizedForwardSpeed = Mathf.Clamp01(localVelocity.z / Mathf.Max(0.01f, maxSpeed));
+            float normalizedSideSlip = Mathf.Clamp(localVelocity.x / Mathf.Max(0.01f, maxSpeed), -1f, 1f);
+            float normalizedForwardAcceleration = Mathf.Clamp(Vector3.Dot(acceleration, transform.forward) / Mathf.Max(0.01f, maxForce), -1f, 1f);
 
             float targetPitch = 0f;
             float targetRoll = 0f;
 
             if (UsesAutopilot)
             {
-                targetPitch = -normalizedVerticalSpeed * climbPitchAngle + normalizedForwardSpeed * 4f;
+                targetPitch = -normalizedVerticalSpeed * climbPitchAngle + normalizedForwardSpeed * 4f - normalizedForwardAcceleration * 6f;
                 float sideAcceleration = Mathf.Clamp(Vector3.Dot(acceleration, transform.right) / Mathf.Max(0.01f, maxForce), -1f, 1f);
-                targetRoll = -sideAcceleration * turnBankAngle;
+                targetRoll = -sideAcceleration * turnBankAngle - normalizedSideSlip * 8f;
             }
             else
             {
@@ -720,8 +722,9 @@ namespace ljk
                     targetPitch -= normalizedVerticalSpeed * climbPitchAngle * 0.75f;
                 }
 
-                targetPitch += normalizedForwardSpeed * 6f;
+                targetPitch += normalizedForwardSpeed * 6f - normalizedForwardAcceleration * 4f;
                 targetRoll = -smoothedTurnInput * turnBankAngle * Mathf.Lerp(0.55f, 1f, normalizedForwardSpeed);
+                targetRoll -= normalizedSideSlip * 5f;
             }
 
             targetPitch += bodyPitchAngle * 0.45f;
