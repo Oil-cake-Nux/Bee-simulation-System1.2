@@ -173,7 +173,6 @@ namespace ljk
         private float playerTargetHeight = 0f;
         private float visualPitch = 0f;
         private float visualRoll = 0f;
-        private float originalMaxSpeed = 0f;
         private Transform cachedVisualRoot;
         private Quaternion visualRootBaseRotation = Quaternion.identity;
         private Transform runtimeVisualizationRoot;
@@ -198,8 +197,6 @@ namespace ljk
             }
 
             beeTarget = GetComponent<BeeTargetController>();
-            originalMaxSpeed = maxSpeed;
-
             ConfigureRigidbody();
             CacheVisualRoot();
         }
@@ -641,7 +638,7 @@ namespace ljk
             acceleration = totalForce / Mathf.Max(0.01f, rb.mass);
             velocity += acceleration * Time.fixedDeltaTime;
 
-            float horizontalSpeedLimit = UsesAutopilot ? originalMaxSpeed : maxSpeed * (playerBoostInput ? boostMultiplier : 1f);
+            float horizontalSpeedLimit = UsesAutopilot ? maxSpeed : maxSpeed * (playerBoostInput ? boostMultiplier : 1f);
             float verticalSpeedLimit = UsesAutopilot ? horizontalSpeedLimit * 0.6f : maxClimbSpeed;
 
             Vector3 horizontalVelocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
