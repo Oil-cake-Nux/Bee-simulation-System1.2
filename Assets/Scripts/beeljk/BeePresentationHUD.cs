@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace ljk
@@ -33,9 +34,14 @@ namespace ljk
         private Text hintText;
         private GameObject forcePanelObject;
         private GameObject forceContentObject;
+        private GameObject helpPanelObject;
         private Text forcePanelHeaderText;
         private PresentationFlightMode currentMode = PresentationFlightMode.Manual;
         private bool demoEnhancementEnabled = false;
+        private bool isGameplayScene = false;
+        private float timeScaleBeforeHelp = 1f;
+        private const string MainMenuSceneName = "MainMenu";
+        private const string GameplaySceneName = "Demo";
         private readonly StringBuilder builder = new StringBuilder(512);
         private readonly List<RuntimeSliderBinding> forceSliders = new List<RuntimeSliderBinding>();
 
@@ -72,19 +78,27 @@ namespace ljk
 
             DontDestroyOnLoad(gameObject);
             CreateHud();
-            ResolveReferences();
-            SyncModeFromSimulation();
-            ApplyPresentationMode(currentMode, false);
+            HandleSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
         }
 
         private void OnEnable()
         {
-            ResolveReferences();
-            RefreshHudVisibility();
+            SceneManager.sceneLoaded += HandleSceneLoaded;
+            HandleSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+        }
+
+        private void OnDisable()
+        {
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
         }
 
         private void Update()
         {
+            if (!isGameplayScene)
+            {
+                return;
+            }
+
             if (Input.GetKeyDown(toggleHudKey))
             {
                 showHud = !showHud;
@@ -113,6 +127,29 @@ namespace ljk
             }
 
             ResolveReferences();
+            RefreshHud();
+            RefreshForceControlValues();
+        }
+
+        private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            beeSimulation = null;
+            beeTargetController = null;
+            beeSimulationManager = null;
+            visualizationManager = null;
+
+            ResolveReferences();
+            isGameplayScene = beeSimulation != null;
+            SetHelpPanelVisible(false, false);
+            RefreshHudVisibility();
+
+            if (!isGameplayScene)
+            {
+                return;
+            }
+
+            SyncModeFromSimulation();
+            ApplyPresentationMode(currentMode, false);
             RefreshHud();
             RefreshForceControlValues();
         }
@@ -176,13 +213,13 @@ namespace ljk
             panelRect.anchorMax = new Vector2(1f, 1f);
             panelRect.pivot = new Vector2(1f, 0.5f);
             panelRect.anchoredPosition = new Vector2(0f, 0f);
-            panelRect.sizeDelta = new Vector2(230f, 0f);
+            panelRect.sizeDelta = new Vector2(200f, 0f);
 
             statusText = CreateText("StatusText", panelObject.transform, font, 14, TextAnchor.UpperLeft);
             RectTransform statusRect = statusText.rectTransform;
             statusRect.anchorMin = new Vector2(0f, 0f);
             statusRect.anchorMax = new Vector2(1f, 1f);
-            statusRect.offsetMin = new Vector2(12f, 52f);
+            statusRect.offsetMin = new Vector2(12f, 92f);
             statusRect.offsetMax = new Vector2(-12f, -18f);
 
             hintText = CreateText("HintText", panelObject.transform, font, 14, TextAnchor.LowerLeft);
@@ -194,7 +231,9 @@ namespace ljk
             hintRect.sizeDelta = new Vector2(0f, 44f);
             hintRect.anchoredPosition = new Vector2(0f, 10f);
 
+            CreateNavigationButtonRow(panelObject.transform, font);
             CreateForceControlPanel(canvasObject.transform, font);
+            CreateHelpPanel(canvasObject.transform, font);
             RefreshForcePanelVisibility();
         }
 
@@ -237,6 +276,109 @@ namespace ljk
             return text;
         }
 
+        private void CreateNavigationButtonRow(Transform parent, Font font)
+        {
+            GameObject rowObject = new GameObject("NavigationButtons");
+            rowObject.transform.SetParent(parent, false);
+
+            RectTransform rowRect = rowObject.AddComponent<RectTransform>();
+            rowRect.anchorMin = new Vector2(0f, 0f);
+            rowRect.anchorMax = new Vector2(1f, 0f);
+            rowRect.pivot = new Vector2(0.5f, 0f);
+            rowRect.offsetMin = new Vector2(8f, 52f);
+            rowRect.offsetMax = new Vector2(-8f, 82f);
+
+            HorizontalLayoutGroup layout = rowObject.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 4f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = true;
+
+            CreateNavigationButton(rowObject.transform, font, "返回主界面", ReturnToMainMenu, 76f, 12);
+            CreateNavigationButton(rowObject.transform, font, "重新开始", RestartExploration, 66f, 12);
+            CreateNavigationButton(rowObject.transform, font, "?", ShowHelpPanel, 28f, 18);
+        }
+
+        private void CreateNavigationButton(Transform parent, Font font, string label, UnityEngine.Events.UnityAction action, float preferredWidth, int fontSize)
+        {
+            GameObject buttonObject = CreateButton(label + "Button", parent, font, label);
+            LayoutElement layoutElement = buttonObject.AddComponent<LayoutElement>();
+            layoutElement.minWidth = preferredWidth;
+            layoutElement.preferredWidth = preferredWidth;
+            layoutElement.minHeight = 28f;
+            layoutElement.preferredHeight = 28f;
+
+            Text labelText = buttonObject.GetComponentInChildren<Text>();
+            labelText.fontSize = fontSize;
+            labelText.alignment = TextAnchor.MiddleCenter;
+            RectTransform labelRect = labelText.rectTransform;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            buttonObject.GetComponent<Button>().onClick.AddListener(action);
+        }
+
+        private void CreateHelpPanel(Transform canvasTransform, Font font)
+        {
+            helpPanelObject = new GameObject("OperationHelpPanel");
+            helpPanelObject.transform.SetParent(canvasTransform, false);
+
+            Image panelImage = helpPanelObject.AddComponent<Image>();
+            panelImage.color = new Color(0.02f, 0.03f, 0.03f, 0.92f);
+
+            RectTransform panelRect = helpPanelObject.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRect.pivot = new Vector2(0.5f, 0.5f);
+            panelRect.sizeDelta = new Vector2(500f, 330f);
+            panelRect.anchoredPosition = Vector2.zero;
+
+            Text titleText = CreateText("HelpTitle", helpPanelObject.transform, font, 24, TextAnchor.MiddleCenter);
+            titleText.text = "操作说明";
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = new Color(1f, 0.92f, 0.55f, 1f);
+            RectTransform titleRect = titleText.rectTransform;
+            titleRect.anchorMin = new Vector2(0f, 1f);
+            titleRect.anchorMax = new Vector2(1f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.anchoredPosition = new Vector2(0f, -18f);
+            titleRect.sizeDelta = new Vector2(-40f, 42f);
+
+            Text bodyText = CreateText("HelpBody", helpPanelObject.transform, font, 16, TextAnchor.UpperLeft);
+            bodyText.text =
+                "基础飞行：W / S 前进与减速，A / D 转向\n" +
+                "高度控制：空格键上升，左 Ctrl 下降，左 Shift 加速\n" +
+                "模式切换：Tab 切换手动飞行、自动飞行、演示模式\n" +
+                "显示控制：F1 显示/隐藏状态栏，F2 切换可视化，F3 打开/收起力面板\n" +
+                "轨迹控制：` 清空飞行轨迹\n" +
+                "说明面板：点击右侧 ? 会暂停游戏并显示本说明";
+            bodyText.lineSpacing = 1.2f;
+            RectTransform bodyRect = bodyText.rectTransform;
+            bodyRect.anchorMin = new Vector2(0f, 0f);
+            bodyRect.anchorMax = new Vector2(1f, 1f);
+            bodyRect.offsetMin = new Vector2(36f, 72f);
+            bodyRect.offsetMax = new Vector2(-36f, -72f);
+
+            GameObject closeButtonObject = CreateButton("CloseHelpButton", helpPanelObject.transform, font, "继续探索");
+            RectTransform closeRect = closeButtonObject.GetComponent<RectTransform>();
+            closeRect.anchorMin = new Vector2(0.5f, 0f);
+            closeRect.anchorMax = new Vector2(0.5f, 0f);
+            closeRect.pivot = new Vector2(0.5f, 0f);
+            closeRect.sizeDelta = new Vector2(132f, 34f);
+            closeRect.anchoredPosition = new Vector2(0f, 22f);
+
+            Text closeText = closeButtonObject.GetComponentInChildren<Text>();
+            closeText.alignment = TextAnchor.MiddleCenter;
+            closeText.fontSize = 15;
+            closeText.rectTransform.offsetMin = Vector2.zero;
+            closeText.rectTransform.offsetMax = Vector2.zero;
+            closeButtonObject.GetComponent<Button>().onClick.AddListener(HideHelpPanel);
+
+            helpPanelObject.SetActive(false);
+        }
+
         private void EnsureEventSystem()
         {
             if (FindObjectOfType<EventSystem>() != null)
@@ -264,7 +406,7 @@ namespace ljk
             panelRect.anchoredPosition = new Vector2(0f, 0f);
             panelRect.sizeDelta = new Vector2(195f, 0f);
 
-            GameObject headerButtonObject = CreateButton("ForceHeaderButton", forcePanelObject.transform, font, "Force Controls  [F3]");
+            GameObject headerButtonObject = CreateButton("ForceHeaderButton", forcePanelObject.transform, font, "力参数控制  [F3]");
             RectTransform headerRect = headerButtonObject.GetComponent<RectTransform>();
             headerRect.anchorMin = new Vector2(0f, 1f);
             headerRect.anchorMax = new Vector2(1f, 1f);
@@ -316,29 +458,29 @@ namespace ljk
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
 
-            CreateFoldoutSection(contentObject.transform, font, "Flight Force", true, section =>
+            CreateFoldoutSection(contentObject.transform, font, "飞行动力", true, section =>
             {
-                CreateForceSlider(section, font, "Max Force", 1f, 20f, () => beeSimulation.maxForce, value => beeSimulation.maxForce = value, "F1");
-                CreateForceSlider(section, font, "Max Speed", 0.5f, 8f, () => beeSimulation.maxSpeed, value => beeSimulation.maxSpeed = value, "F1");
-                CreateForceSlider(section, font, "Move Speed", 0.5f, 8f, () => beeSimulation.moveSpeed, value => beeSimulation.moveSpeed = value, "F1");
-                CreateForceSlider(section, font, "Oscillation Weight", 0f, 4f, () => beeSimulation.oscillationForceWeight, value => beeSimulation.oscillationForceWeight = value, "F2");
-                CreateForceSlider(section, font, "Oscillation Hz", 0.2f, 8f, () => beeSimulation.oscillationFrequency, value => beeSimulation.oscillationFrequency = value, "F2");
+                CreateForceSlider(section, font, "最大推力", 1f, 20f, () => beeSimulation.maxForce, value => beeSimulation.maxForce = value, "F1");
+                CreateForceSlider(section, font, "最大速度", 0.5f, 8f, () => beeSimulation.maxSpeed, value => beeSimulation.maxSpeed = value, "F1");
+                CreateForceSlider(section, font, "移动速度", 0.5f, 8f, () => beeSimulation.moveSpeed, value => beeSimulation.moveSpeed = value, "F1");
+                CreateForceSlider(section, font, "振翅权重", 0f, 4f, () => beeSimulation.oscillationForceWeight, value => beeSimulation.oscillationForceWeight = value, "F2");
+                CreateForceSlider(section, font, "振翅频率", 0.2f, 8f, () => beeSimulation.oscillationFrequency, value => beeSimulation.oscillationFrequency = value, "F2");
             });
 
-            CreateFoldoutSection(contentObject.transform, font, "Height & Target", true, section =>
+            CreateFoldoutSection(contentObject.transform, font, "高度与目标", true, section =>
             {
-                CreateForceSlider(section, font, "Target Height", 1f, 20f, () => beeSimulation.targetHeight, value => beeSimulation.targetHeight = value, "F1");
-                CreateForceSlider(section, font, "Height Damping", 0.05f, 2f, () => beeSimulation.heightDampingFactor, value => beeSimulation.heightDampingFactor = value, "F2");
-                CreateForceSlider(section, font, "Target Attraction", 0f, 5f, () => beeSimulation.targetAttractionWeight, value => beeSimulation.targetAttractionWeight = value, "F2");
-                CreateForceSlider(section, font, "Slowing Radius", 0.5f, 8f, () => beeSimulation.slowingRadius, value => beeSimulation.slowingRadius = value, "F1");
+                CreateForceSlider(section, font, "目标高度", 1f, 20f, () => beeSimulation.targetHeight, value => beeSimulation.targetHeight = value, "F1");
+                CreateForceSlider(section, font, "高度阻尼", 0.05f, 2f, () => beeSimulation.heightDampingFactor, value => beeSimulation.heightDampingFactor = value, "F2");
+                CreateForceSlider(section, font, "目标吸引", 0f, 5f, () => beeSimulation.targetAttractionWeight, value => beeSimulation.targetAttractionWeight = value, "F2");
+                CreateForceSlider(section, font, "减速半径", 0.5f, 8f, () => beeSimulation.slowingRadius, value => beeSimulation.slowingRadius = value, "F1");
             });
 
-            CreateFoldoutSection(contentObject.transform, font, "Avoidance & Noise", false, section =>
+            CreateFoldoutSection(contentObject.transform, font, "避障与扰动", false, section =>
             {
-                CreateForceSlider(section, font, "Obstacle Weight", 0f, 12f, () => beeSimulation.obstacleAvoidanceWeight, value => beeSimulation.obstacleAvoidanceWeight = value, "F1");
-                CreateForceSlider(section, font, "Ground Weight", 0f, 16f, () => beeSimulation.groundAvoidanceWeight, value => beeSimulation.groundAvoidanceWeight = value, "F1");
-                CreateForceSlider(section, font, "Noise Weight", 0f, 5f, () => beeSimulation.curlNoiseWeight, value => beeSimulation.curlNoiseWeight = value, "F2");
-                CreateForceSlider(section, font, "Visual Range", 1f, 12f, () => beeSimulation.visualRange, value => beeSimulation.visualRange = value, "F1");
+                CreateForceSlider(section, font, "障碍权重", 0f, 12f, () => beeSimulation.obstacleAvoidanceWeight, value => beeSimulation.obstacleAvoidanceWeight = value, "F1");
+                CreateForceSlider(section, font, "地面权重", 0f, 16f, () => beeSimulation.groundAvoidanceWeight, value => beeSimulation.groundAvoidanceWeight = value, "F1");
+                CreateForceSlider(section, font, "扰动权重", 0f, 5f, () => beeSimulation.curlNoiseWeight, value => beeSimulation.curlNoiseWeight = value, "F2");
+                CreateForceSlider(section, font, "感知范围", 1f, 12f, () => beeSimulation.visualRange, value => beeSimulation.visualRange = value, "F1");
             });
         }
 
@@ -552,7 +694,7 @@ namespace ljk
 
             if (forcePanelHeaderText != null)
             {
-                forcePanelHeaderText.text = showForcePanel ? "Force Controls  [F3]" : "Force Controls collapsed  [F3]";
+                forcePanelHeaderText.text = showForcePanel ? "力参数控制  [F3]" : "力参数已收起  [F3]";
             }
 
             RectTransform panelRect = forcePanelObject != null ? forcePanelObject.GetComponent<RectTransform>() : null;
@@ -673,11 +815,68 @@ namespace ljk
             }
         }
 
+        private void ReturnToMainMenu()
+        {
+            Time.timeScale = 1f;
+            SetHelpPanelVisible(false, false);
+            SceneManager.LoadScene(MainMenuSceneName);
+        }
+
+        private void RestartExploration()
+        {
+            Time.timeScale = 1f;
+            SetHelpPanelVisible(false, false);
+            SceneManager.LoadScene(GameplaySceneName);
+        }
+
+        private void ShowHelpPanel()
+        {
+            SetHelpPanelVisible(true, true);
+        }
+
+        private void HideHelpPanel()
+        {
+            SetHelpPanelVisible(false, true);
+        }
+
+        private void SetHelpPanelVisible(bool visible, bool restoreTimeScale)
+        {
+            if (visible)
+            {
+                timeScaleBeforeHelp = Time.timeScale;
+                Time.timeScale = 0f;
+
+                if (helpPanelObject != null)
+                {
+                    helpPanelObject.SetActive(true);
+                    helpPanelObject.transform.SetAsLastSibling();
+                }
+
+                return;
+            }
+
+            if (helpPanelObject != null)
+            {
+                helpPanelObject.SetActive(false);
+            }
+
+            if (restoreTimeScale)
+            {
+                Time.timeScale = timeScaleBeforeHelp;
+            }
+        }
+
         private void RefreshHudVisibility()
         {
+            bool shouldShowHud = isGameplayScene && showHud;
             if (hudCanvas != null)
             {
-                hudCanvas.enabled = showHud;
+                hudCanvas.enabled = shouldShowHud;
+            }
+
+            if (forcePanelObject != null)
+            {
+                forcePanelObject.SetActive(shouldShowHud);
             }
         }
 
@@ -690,12 +889,12 @@ namespace ljk
 
             builder.Length = 0;
             builder.AppendLine("蜜蜂飞行状态");
-            builder.AppendLine("速度: " + beeSimulation.CurrentSpeed.ToString("F2") + " m/s");
-            builder.AppendLine("高度: " + beeSimulation.CurrentAltitude.ToString("F2") + " m");
+            builder.AppendLine("速度: " + beeSimulation.CurrentSpeed.ToString("F2") + " 米/秒");
+            builder.AppendLine("高度: " + beeSimulation.CurrentAltitude.ToString("F2") + " 米");
 
             if (beeSimulation.DistanceToTarget >= 0f)
             {
-                builder.AppendLine("目标距离: " + beeSimulation.DistanceToTarget.ToString("F2") + " m");
+                builder.AppendLine("目标距离: " + beeSimulation.DistanceToTarget.ToString("F2") + " 米");
             }
             else
             {
@@ -704,9 +903,9 @@ namespace ljk
 
             builder.AppendLine("飞行模式: " + GetModeLabel(currentMode));
             builder.AppendLine("采集状态: " + GetCollectionStatus());
-            builder.AppendLine("振翅频率: " + beeSimulation.oscillationFrequency.ToString("F2") + " Hz");
+            builder.AppendLine("振翅频率: " + beeSimulation.oscillationFrequency.ToString("F2") + " 赫兹");
             builder.AppendLine("扰动强度: " + beeSimulation.curlNoiseWeight.ToString("F2"));
-            builder.AppendLine("姿态 Pitch/Roll: " + beeSimulation.CurrentVisualPitch.ToString("F1") + "° / " + beeSimulation.CurrentVisualRoll.ToString("F1") + "°");
+            builder.AppendLine("姿态 俯仰/横滚: " + beeSimulation.CurrentVisualPitch.ToString("F1") + "° / " + beeSimulation.CurrentVisualRoll.ToString("F1") + "°");
 
             if (beeSimulationManager != null)
             {
@@ -714,7 +913,7 @@ namespace ljk
             }
 
             statusText.text = builder.ToString();
-            hintText.text = "F1 HUD  |  F2 View  |  F3 Force Panel  |  Tab Mode  |  ` Clear Trail";
+            hintText.text = "F1 状态栏  |  F2 可视化  |  F3 力面板  |  Tab 模式  |  ` 清空轨迹";
         }
 
         private string GetCollectionStatus()
