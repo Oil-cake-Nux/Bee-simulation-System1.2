@@ -23,3 +23,13 @@
 *.aab
 *.unitypackage
 .omx/
+
+# Unity editor layout (auto-generated, changes per machine/resolution)
+UserSettings/
+
+# Unity crash / error dumps
+*.crash
+*.dump
+
+# macOS
+.DS_Store

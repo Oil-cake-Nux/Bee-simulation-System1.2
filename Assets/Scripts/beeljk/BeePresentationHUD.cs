@@ -33,9 +33,8 @@ namespace ljk
         private Text statusText;
         private Text hintText;
         private GameObject forcePanelObject;
-        private GameObject forceContentObject;
         private GameObject helpPanelObject;
-        private Text forcePanelHeaderText;
+        private GameObject activeForcePanelBody;
         private PresentationFlightMode currentMode = PresentationFlightMode.Manual;
         private bool demoEnhancementEnabled = false;
         private bool isGameplayScene = false;
@@ -44,6 +43,8 @@ namespace ljk
         private const string GameplaySceneName = "Demo";
         private readonly StringBuilder builder = new StringBuilder(512);
         private readonly List<RuntimeSliderBinding> forceSliders = new List<RuntimeSliderBinding>();
+        private readonly List<RuntimeToggleBinding> forceToggles = new List<RuntimeToggleBinding>();
+        private readonly List<GameObject> forcePanelBodies = new List<GameObject>();
 
         private sealed class RuntimeSliderBinding
         {
@@ -52,6 +53,14 @@ namespace ljk
             public Func<float> getter;
             public Action<float> setter;
             public string valueFormat;
+            public bool isUpdating;
+        }
+
+        private sealed class RuntimeToggleBinding
+        {
+            public Toggle toggle;
+            public Func<bool> getter;
+            public Action<bool> setter;
             public bool isUpdating;
         }
 
@@ -219,8 +228,9 @@ namespace ljk
             RectTransform statusRect = statusText.rectTransform;
             statusRect.anchorMin = new Vector2(0f, 0f);
             statusRect.anchorMax = new Vector2(1f, 1f);
-            statusRect.offsetMin = new Vector2(12f, 92f);
+            statusRect.offsetMin = new Vector2(12f, 104f);
             statusRect.offsetMax = new Vector2(-12f, -18f);
+            statusText.verticalOverflow = VerticalWrapMode.Truncate;
 
             hintText = CreateText("HintText", panelObject.transform, font, 14, TextAnchor.LowerLeft);
             hintText.color = new Color(1f, 0.95f, 0.75f, 0.95f);
@@ -228,8 +238,9 @@ namespace ljk
             hintRect.anchorMin = new Vector2(0f, 0f);
             hintRect.anchorMax = new Vector2(1f, 0f);
             hintRect.pivot = new Vector2(0.5f, 0f);
-            hintRect.sizeDelta = new Vector2(0f, 44f);
-            hintRect.anchoredPosition = new Vector2(0f, 10f);
+            hintRect.sizeDelta = new Vector2(0f, 38f);
+            hintRect.anchoredPosition = new Vector2(0f, 44f);
+            hintText.verticalOverflow = VerticalWrapMode.Truncate;
 
             CreateNavigationButtonRow(panelObject.transform, font);
             CreateForceControlPanel(canvasObject.transform, font);
@@ -285,8 +296,8 @@ namespace ljk
             rowRect.anchorMin = new Vector2(0f, 0f);
             rowRect.anchorMax = new Vector2(1f, 0f);
             rowRect.pivot = new Vector2(0.5f, 0f);
-            rowRect.offsetMin = new Vector2(8f, 52f);
-            rowRect.offsetMax = new Vector2(-8f, 82f);
+            rowRect.offsetMin = new Vector2(8f, 8f);
+            rowRect.offsetMax = new Vector2(-8f, 38f);
 
             HorizontalLayoutGroup layout = rowObject.AddComponent<HorizontalLayoutGroup>();
             layout.spacing = 4f;
@@ -332,7 +343,7 @@ namespace ljk
             panelRect.anchorMin = new Vector2(0.5f, 0.5f);
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
-            panelRect.sizeDelta = new Vector2(500f, 330f);
+            panelRect.sizeDelta = new Vector2(760f, 610f);
             panelRect.anchoredPosition = Vector2.zero;
 
             Text titleText = CreateText("HelpTitle", helpPanelObject.transform, font, 24, TextAnchor.MiddleCenter);
@@ -346,20 +357,42 @@ namespace ljk
             titleRect.anchoredPosition = new Vector2(0f, -18f);
             titleRect.sizeDelta = new Vector2(-40f, 42f);
 
-            Text bodyText = CreateText("HelpBody", helpPanelObject.transform, font, 16, TextAnchor.UpperLeft);
+            Text bodyText = CreateText("HelpBody", helpPanelObject.transform, font, 12, TextAnchor.UpperLeft);
             bodyText.text =
                 "基础飞行：W / S 前进与减速，A / D 转向\n" +
                 "高度控制：空格键上升，左 Ctrl 下降，左 Shift 加速\n" +
                 "模式切换：Tab 切换手动飞行、自动飞行、演示模式\n" +
                 "显示控制：F1 显示/隐藏状态栏，F2 切换可视化，F3 打开/收起力面板\n" +
                 "轨迹控制：` 清空飞行轨迹\n" +
-                "说明面板：点击右侧 ? 会暂停游戏并显示本说明";
-            bodyText.lineSpacing = 1.2f;
+                "说明面板：点击右侧 ? 会暂停游戏并显示本说明\n\n" +
+                "ForceControl 控制说明：\n" +
+                "最大推力：限制合力上限，数值越大加速和修正越强\n" +
+                "最大速度：限制自动/手动飞行的水平速度上限\n" +
+                "移动速度：自动目标趋近时的期望飞行速度\n" +
+                "振翅权重：控制振翅扰动力在合力中的占比\n" +
+                "振翅频率：控制微扰动和姿态波动频率\n" +
+                "目标高度：无目标时自动飞行保持的基础高度\n" +
+                "高度阻尼：高度误差修正强度，过高会使上下修正更急\n" +
+                "目标吸引：目标引导力权重，越高越积极飞向目标\n" +
+                "减速半径：接近目标时开始减速的距离范围\n" +
+                "障碍权重：避障力权重，越高越明显绕开树木等障碍\n" +
+                "地面权重：低空时向上抬升的地面规避强度\n" +
+                "扰动权重：Curl Noise 环境扰动对飞行轨迹的影响强度\n" +
+                "感知范围：避障射线检测障碍的最远距离\n" +
+                "绕行保持：选定左/右绕行方向后的保持时间，减少左右抖动\n" +
+                "目标削弱：避障时临时削弱目标吸引，避免被目标拉回障碍\n" +
+                "受力显示：勾选后允许显示对应力向量，未触发或向量为零时不会画线\n\n" +
+                "受力线条颜色：\n" +
+                "蓝色：速度向量  白色：玩家控制力  粉色：目标引导力\n" +
+                "黄色：避障力  紫色：地面规避力  橙色：振翅扰动力\n" +
+                "青色：噪声扰动力/噪声探针\n" +
+                "绿色：合力";
+            bodyText.lineSpacing = 1.0f;
             RectTransform bodyRect = bodyText.rectTransform;
             bodyRect.anchorMin = new Vector2(0f, 0f);
             bodyRect.anchorMax = new Vector2(1f, 1f);
-            bodyRect.offsetMin = new Vector2(36f, 72f);
-            bodyRect.offsetMax = new Vector2(-36f, -72f);
+            bodyRect.offsetMin = new Vector2(34f, 62f);
+            bodyRect.offsetMax = new Vector2(-34f, -66f);
 
             GameObject closeButtonObject = CreateButton("CloseHelpButton", helpPanelObject.transform, font, "继续探索");
             RectTransform closeRect = closeButtonObject.GetComponent<RectTransform>();
@@ -406,15 +439,21 @@ namespace ljk
             panelRect.anchoredPosition = new Vector2(0f, 0f);
             panelRect.sizeDelta = new Vector2(195f, 0f);
 
-            GameObject headerButtonObject = CreateButton("ForceHeaderButton", forcePanelObject.transform, font, "力参数控制  [F3]");
-            RectTransform headerRect = headerButtonObject.GetComponent<RectTransform>();
-            headerRect.anchorMin = new Vector2(0f, 1f);
-            headerRect.anchorMax = new Vector2(1f, 1f);
-            headerRect.pivot = new Vector2(0.5f, 1f);
-            headerRect.anchoredPosition = new Vector2(0f, -14f);
-            headerRect.sizeDelta = new Vector2(-18f, 30f);
-            forcePanelHeaderText = headerButtonObject.GetComponentInChildren<Text>();
-            headerButtonObject.GetComponent<Button>().onClick.AddListener(ToggleForceControlContent);
+            GameObject tabRowObject = new GameObject("ForcePanelTabs");
+            tabRowObject.transform.SetParent(forcePanelObject.transform, false);
+            RectTransform tabRowRect = tabRowObject.AddComponent<RectTransform>();
+            tabRowRect.anchorMin = new Vector2(0f, 1f);
+            tabRowRect.anchorMax = new Vector2(1f, 1f);
+            tabRowRect.pivot = new Vector2(0.5f, 1f);
+            tabRowRect.offsetMin = new Vector2(8f, -76f);
+            tabRowRect.offsetMax = new Vector2(-8f, -12f);
+
+            GridLayoutGroup tabLayout = tabRowObject.AddComponent<GridLayoutGroup>();
+            tabLayout.cellSize = new Vector2(84f, 28f);
+            tabLayout.spacing = new Vector2(5f, 5f);
+            tabLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            tabLayout.constraintCount = 2;
+            tabLayout.childAlignment = TextAnchor.UpperCenter;
 
             GameObject viewportObject = new GameObject("ForceControlViewport");
             viewportObject.transform.SetParent(forcePanelObject.transform, false);
@@ -427,11 +466,10 @@ namespace ljk
             viewportRect.anchorMin = new Vector2(0f, 0f);
             viewportRect.anchorMax = new Vector2(1f, 1f);
             viewportRect.offsetMin = new Vector2(8f, 14f);
-            viewportRect.offsetMax = new Vector2(-8f, -58f);
+            viewportRect.offsetMax = new Vector2(-8f, -86f);
 
             GameObject contentObject = new GameObject("ForceControlContent");
             contentObject.transform.SetParent(viewportObject.transform, false);
-            forceContentObject = contentObject;
 
             RectTransform contentRect = contentObject.AddComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0f, 1f);
@@ -458,7 +496,7 @@ namespace ljk
             scrollRect.vertical = true;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
 
-            CreateFoldoutSection(contentObject.transform, font, "飞行动力", true, section =>
+            GameObject flightPanel = CreatePanelSection(contentObject.transform, font, "飞行动力", section =>
             {
                 CreateForceSlider(section, font, "最大推力", 1f, 20f, () => beeSimulation.maxForce, value => beeSimulation.maxForce = value, "F1");
                 CreateForceSlider(section, font, "最大速度", 0.5f, 8f, () => beeSimulation.maxSpeed, value => beeSimulation.maxSpeed = value, "F1");
@@ -467,7 +505,7 @@ namespace ljk
                 CreateForceSlider(section, font, "振翅频率", 0.2f, 8f, () => beeSimulation.oscillationFrequency, value => beeSimulation.oscillationFrequency = value, "F2");
             });
 
-            CreateFoldoutSection(contentObject.transform, font, "高度与目标", true, section =>
+            GameObject targetPanel = CreatePanelSection(contentObject.transform, font, "高度与目标", section =>
             {
                 CreateForceSlider(section, font, "目标高度", 1f, 20f, () => beeSimulation.targetHeight, value => beeSimulation.targetHeight = value, "F1");
                 CreateForceSlider(section, font, "高度阻尼", 0.05f, 2f, () => beeSimulation.heightDampingFactor, value => beeSimulation.heightDampingFactor = value, "F2");
@@ -475,13 +513,34 @@ namespace ljk
                 CreateForceSlider(section, font, "减速半径", 0.5f, 8f, () => beeSimulation.slowingRadius, value => beeSimulation.slowingRadius = value, "F1");
             });
 
-            CreateFoldoutSection(contentObject.transform, font, "避障与扰动", false, section =>
+            GameObject avoidancePanel = CreatePanelSection(contentObject.transform, font, "避障与扰动", section =>
             {
                 CreateForceSlider(section, font, "障碍权重", 0f, 12f, () => beeSimulation.obstacleAvoidanceWeight, value => beeSimulation.obstacleAvoidanceWeight = value, "F1");
                 CreateForceSlider(section, font, "地面权重", 0f, 16f, () => beeSimulation.groundAvoidanceWeight, value => beeSimulation.groundAvoidanceWeight = value, "F1");
                 CreateForceSlider(section, font, "扰动权重", 0f, 5f, () => beeSimulation.curlNoiseWeight, value => beeSimulation.curlNoiseWeight = value, "F2");
                 CreateForceSlider(section, font, "感知范围", 1f, 12f, () => beeSimulation.visualRange, value => beeSimulation.visualRange = value, "F1");
+                CreateForceSlider(section, font, "绕行保持", 0.1f, 2f, () => beeSimulation.avoidanceSideHoldTime, value => beeSimulation.avoidanceSideHoldTime = value, "F2");
+                CreateForceSlider(section, font, "目标削弱", 0f, 0.95f, () => beeSimulation.avoidanceGuidanceReduction, value => beeSimulation.avoidanceGuidanceReduction = value, "F2");
             });
+
+            GameObject vectorPanel = CreatePanelSection(contentObject.transform, font, "受力显示", section =>
+            {
+                CreateForceToggle(section, font, "速度向量", () => beeSimulation.showVelocityVector, value => beeSimulation.showVelocityVector = value);
+                CreateForceToggle(section, font, "玩家控制力", () => beeSimulation.showPlayerControlVector, value => beeSimulation.showPlayerControlVector = value);
+                CreateForceToggle(section, font, "目标引导力", () => beeSimulation.showGuidanceVector, value => beeSimulation.showGuidanceVector = value);
+                CreateForceToggle(section, font, "避障力", () => beeSimulation.showObstacleAvoidanceVector, value => beeSimulation.showObstacleAvoidanceVector = value);
+                CreateForceToggle(section, font, "地面规避力", () => beeSimulation.showGroundAvoidanceVector, value => beeSimulation.showGroundAvoidanceVector = value);
+                CreateForceToggle(section, font, "振翅扰动力", () => beeSimulation.showOscillationVector, value => beeSimulation.showOscillationVector = value);
+                CreateForceToggle(section, font, "噪声扰动力", () => beeSimulation.showNoiseVector, value => beeSimulation.showNoiseVector = value);
+                CreateForceToggle(section, font, "合力", () => beeSimulation.showTotalForceVector, value => beeSimulation.showTotalForceVector = value);
+                CreateForceToggle(section, font, "噪声探针", () => beeSimulation.showNoiseProbeVectors, value => beeSimulation.showNoiseProbeVectors = value);
+            });
+
+            CreatePanelTabButton(tabRowObject.transform, font, "飞行动力", flightPanel);
+            CreatePanelTabButton(tabRowObject.transform, font, "高度目标", targetPanel);
+            CreatePanelTabButton(tabRowObject.transform, font, "避障扰动", avoidancePanel);
+            CreatePanelTabButton(tabRowObject.transform, font, "受力显示", vectorPanel);
+            SetActiveForcePanel(flightPanel);
         }
 
         private GameObject CreateButton(string objectName, Transform parent, Font font, string label)
@@ -509,6 +568,63 @@ namespace ljk
             text.raycastTarget = false;
 
             return buttonObject;
+        }
+
+        private void CreatePanelTabButton(Transform parent, Font font, string label, GameObject panelBody)
+        {
+            GameObject buttonObject = CreateButton(label + "Tab", parent, font, label);
+            Text labelText = buttonObject.GetComponentInChildren<Text>();
+            labelText.fontSize = 12;
+            labelText.alignment = TextAnchor.MiddleCenter;
+            labelText.rectTransform.offsetMin = Vector2.zero;
+            labelText.rectTransform.offsetMax = Vector2.zero;
+            buttonObject.GetComponent<Button>().onClick.AddListener(() =>
+            {
+                SetActiveForcePanel(activeForcePanelBody == panelBody ? null : panelBody);
+            });
+        }
+
+        private GameObject CreatePanelSection(Transform parent, Font font, string title, Action<Transform> buildContent)
+        {
+            GameObject bodyObject = new GameObject(title + " Panel");
+            bodyObject.transform.SetParent(parent, false);
+
+            VerticalLayoutGroup bodyLayout = bodyObject.AddComponent<VerticalLayoutGroup>();
+            bodyLayout.spacing = 5f;
+            bodyLayout.padding = new RectOffset(4, 4, 4, 4);
+            bodyLayout.childControlWidth = true;
+            bodyLayout.childControlHeight = true;
+            bodyLayout.childForceExpandWidth = true;
+            bodyLayout.childForceExpandHeight = false;
+
+            ContentSizeFitter bodyFitter = bodyObject.AddComponent<ContentSizeFitter>();
+            bodyFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            Text titleText = CreateText(title + " Title", bodyObject.transform, font, 15, TextAnchor.MiddleLeft);
+            titleText.text = title;
+            titleText.fontStyle = FontStyle.Bold;
+            titleText.color = new Color(1f, 0.92f, 0.55f, 1f);
+            LayoutElement titleLayout = titleText.gameObject.AddComponent<LayoutElement>();
+            titleLayout.minHeight = 26f;
+            titleLayout.preferredHeight = 26f;
+
+            buildContent(bodyObject.transform);
+            bodyObject.SetActive(false);
+            forcePanelBodies.Add(bodyObject);
+            return bodyObject;
+        }
+
+        private void SetActiveForcePanel(GameObject panelBody)
+        {
+            activeForcePanelBody = panelBody;
+
+            for (int i = 0; i < forcePanelBodies.Count; i++)
+            {
+                if (forcePanelBodies[i] != null)
+                {
+                    forcePanelBodies[i].SetActive(forcePanelBodies[i] == panelBody);
+                }
+            }
         }
 
         private void CreateFoldoutSection(Transform parent, Font font, string title, bool expanded, Action<Transform> buildContent)
@@ -613,6 +729,81 @@ namespace ljk
             forceSliders.Add(binding);
         }
 
+        private void CreateForceToggle(Transform parent, Font font, string label, Func<bool> getter, Action<bool> setter)
+        {
+            GameObject rowObject = new GameObject(label + " ToggleRow");
+            rowObject.transform.SetParent(parent, false);
+
+            HorizontalLayoutGroup rowLayout = rowObject.AddComponent<HorizontalLayoutGroup>();
+            rowLayout.spacing = 8f;
+            rowLayout.padding = new RectOffset(4, 4, 2, 2);
+            rowLayout.childControlWidth = false;
+            rowLayout.childControlHeight = true;
+            rowLayout.childForceExpandWidth = false;
+            rowLayout.childForceExpandHeight = false;
+            rowLayout.childAlignment = TextAnchor.MiddleLeft;
+
+            LayoutElement rowElement = rowObject.AddComponent<LayoutElement>();
+            rowElement.minHeight = 28f;
+            rowElement.preferredHeight = 28f;
+
+            GameObject toggleObject = new GameObject("Toggle");
+            toggleObject.transform.SetParent(rowObject.transform, false);
+            Toggle toggle = toggleObject.AddComponent<Toggle>();
+            LayoutElement toggleLayout = toggleObject.AddComponent<LayoutElement>();
+            toggleLayout.minWidth = 22f;
+            toggleLayout.preferredWidth = 22f;
+            toggleLayout.minHeight = 22f;
+            toggleLayout.preferredHeight = 22f;
+
+            GameObject backgroundObject = new GameObject("Background");
+            backgroundObject.transform.SetParent(toggleObject.transform, false);
+            Image backgroundImage = backgroundObject.AddComponent<Image>();
+            backgroundImage.color = new Color(0.14f, 0.17f, 0.19f, 1f);
+            RectTransform backgroundRect = backgroundObject.GetComponent<RectTransform>();
+            backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
+            backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
+            backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+            backgroundRect.sizeDelta = new Vector2(18f, 18f);
+
+            GameObject checkmarkObject = new GameObject("Checkmark");
+            checkmarkObject.transform.SetParent(backgroundObject.transform, false);
+            Image checkmarkImage = checkmarkObject.AddComponent<Image>();
+            checkmarkImage.color = new Color(0.95f, 0.68f, 0.22f, 1f);
+            RectTransform checkmarkRect = checkmarkObject.GetComponent<RectTransform>();
+            checkmarkRect.anchorMin = new Vector2(0.5f, 0.5f);
+            checkmarkRect.anchorMax = new Vector2(0.5f, 0.5f);
+            checkmarkRect.pivot = new Vector2(0.5f, 0.5f);
+            checkmarkRect.sizeDelta = new Vector2(10f, 10f);
+
+            toggle.targetGraphic = backgroundImage;
+            toggle.graphic = checkmarkImage;
+
+            Text labelText = CreateText("Label", rowObject.transform, font, 12, TextAnchor.MiddleLeft);
+            labelText.text = label;
+            LayoutElement labelLayout = labelText.gameObject.AddComponent<LayoutElement>();
+            labelLayout.preferredWidth = 128f;
+
+            RuntimeToggleBinding binding = new RuntimeToggleBinding
+            {
+                toggle = toggle,
+                getter = getter,
+                setter = setter
+            };
+
+            toggle.onValueChanged.AddListener(value =>
+            {
+                if (binding.isUpdating || beeSimulation == null)
+                {
+                    return;
+                }
+
+                setter(value);
+            });
+
+            forceToggles.Add(binding);
+        }
+
         private Slider CreateSlider(Transform parent, float min, float max)
         {
             GameObject sliderObject = new GameObject("Slider");
@@ -687,20 +878,9 @@ namespace ljk
 
         private void RefreshForcePanelVisibility()
         {
-            if (forceContentObject != null)
+            if (forcePanelObject != null)
             {
-                forceContentObject.SetActive(showForcePanel);
-            }
-
-            if (forcePanelHeaderText != null)
-            {
-                forcePanelHeaderText.text = showForcePanel ? "力参数控制  [F3]" : "力参数已收起  [F3]";
-            }
-
-            RectTransform panelRect = forcePanelObject != null ? forcePanelObject.GetComponent<RectTransform>() : null;
-            if (panelRect != null)
-            {
-                panelRect.sizeDelta = showForcePanel ? new Vector2(195f, 0f) : new Vector2(195f, 0f);
+                forcePanelObject.SetActive(isGameplayScene && showHud && showForcePanel);
             }
         }
 
@@ -728,6 +908,20 @@ namespace ljk
                 {
                     binding.valueText.text = value.ToString(binding.valueFormat);
                 }
+            }
+
+            for (int i = 0; i < forceToggles.Count; i++)
+            {
+                RuntimeToggleBinding binding = forceToggles[i];
+                if (binding.toggle == null || binding.getter == null)
+                {
+                    continue;
+                }
+
+                bool value = binding.getter();
+                binding.isUpdating = true;
+                binding.toggle.SetIsOnWithoutNotify(value);
+                binding.isUpdating = false;
             }
         }
 
@@ -876,7 +1070,7 @@ namespace ljk
 
             if (forcePanelObject != null)
             {
-                forcePanelObject.SetActive(shouldShowHud);
+                forcePanelObject.SetActive(shouldShowHud && showForcePanel);
             }
         }
 

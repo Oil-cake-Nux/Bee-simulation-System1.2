@@ -46,6 +46,8 @@ namespace ljk
         public float obstacleAvoidanceWeight = 5f;
         public int rayCount = 20;
         public float emergencyAvoidanceMultiplier = 1.3f;
+        public float avoidanceSideHoldTime = 0.8f;
+        public float avoidanceGuidanceReduction = 0.7f;
 
         [Header("地面规避")]
         public float groundAvoidanceHeight = 3f;
@@ -74,6 +76,15 @@ namespace ljk
         public float runtimeVectorWidth = 0.006f;
         public float runtimeNoiseProbeSpacing = 1.4f;
         public float runtimeNoiseProbeScale = 0.18f;
+        public bool showVelocityVector = true;
+        public bool showPlayerControlVector = true;
+        public bool showGuidanceVector = true;
+        public bool showObstacleAvoidanceVector = true;
+        public bool showGroundAvoidanceVector = true;
+        public bool showOscillationVector = true;
+        public bool showNoiseVector = true;
+        public bool showTotalForceVector = true;
+        public bool showNoiseProbeVectors = true;
 
         [Header("目标跟踪")]
         public Transform target;
@@ -161,6 +172,8 @@ namespace ljk
         private Vector3 swayAxis = Vector3.right;
         private bool isAvoidingObstacle = false;
         private float obstacleAvoidanceStrength = 0f;
+        private float avoidanceSideSign = 1f;
+        private float avoidanceSideTimer = 0f;
         private float targetAvoidanceRollAngle = 0f;
         private float currentAvoidanceRollAngle = 0f;
         private float bodyPitchAngle = 0f;
@@ -246,7 +259,9 @@ namespace ljk
             Vector3 guidanceForce = CalculateGuidanceForce();
 
             float controlWeight = UsesAutopilot ? 0f : (IsPlayerCollecting ? 0.2f : 0.9f);
-            float guidanceWeight = UsesAutopilot ? 1f : (IsPlayerCollecting ? 1.25f : 0f);
+            float guidanceWeight = UsesAutopilot
+                ? Mathf.Lerp(1f, 1f - avoidanceGuidanceReduction, obstacleAvoidanceStrength)
+                : (IsPlayerCollecting ? 1.25f : 0f);
             float buzzWeight = UsesAutopilot ? oscillationForceWeight : Mathf.Max(1.2f, oscillationForceWeight * 2.4f);
             float noiseWeight = UsesAutopilot ? curlNoiseWeight : Mathf.Max(1.4f, curlNoiseWeight * 1.55f);
 
@@ -294,7 +309,7 @@ namespace ljk
         private void UpdateRuntimeVisualization()
         {
             bool showRuntimeForceVectors = showForces;
-            bool showRuntimeNoiseVectors = showNoiseForce && enableCurlNoise;
+            bool showRuntimeNoiseVectors = showRuntimeForceVectors && showNoiseForce && enableCurlNoise;
 
             if (!showRuntimeForceVectors && !showRuntimeNoiseVectors)
             {
@@ -313,16 +328,16 @@ namespace ljk
             EnsureRuntimeVisualizationObjects();
 
             Vector3 origin = transform.position;
-            UpdateRuntimeVectorRenderer(velocityVectorRenderer, origin, velocity * runtimeVelocityVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(playerControlVectorRenderer, origin, lastPlayerControlContribution * runtimeForceVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(guidanceVectorRenderer, origin, lastGuidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(obstacleVectorRenderer, origin, lastObstacleAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(groundVectorRenderer, origin, lastGroundAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(oscillationVectorRenderer, origin, lastOscillationContribution * runtimeForceVectorScale, showRuntimeForceVectors);
-            UpdateRuntimeVectorRenderer(noiseVectorRenderer, origin, lastNoiseContribution * runtimeForceVectorScale, showRuntimeForceVectors && showRuntimeNoiseVectors);
-            UpdateRuntimeVectorRenderer(totalForceVectorRenderer, origin, lastTotalForce * runtimeForceVectorScale, showRuntimeForceVectors);
+            UpdateRuntimeVectorRenderer(velocityVectorRenderer, origin, velocity * runtimeVelocityVectorScale, showRuntimeForceVectors && showVelocityVector);
+            UpdateRuntimeVectorRenderer(playerControlVectorRenderer, origin, lastPlayerControlContribution * runtimeForceVectorScale, showRuntimeForceVectors && showPlayerControlVector);
+            UpdateRuntimeVectorRenderer(guidanceVectorRenderer, origin, lastGuidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors && showGuidanceVector);
+            UpdateRuntimeVectorRenderer(obstacleVectorRenderer, origin, lastObstacleAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors && showObstacleAvoidanceVector);
+            UpdateRuntimeVectorRenderer(groundVectorRenderer, origin, lastGroundAvoidanceContribution * runtimeForceVectorScale, showRuntimeForceVectors && showGroundAvoidanceVector);
+            UpdateRuntimeVectorRenderer(oscillationVectorRenderer, origin, lastOscillationContribution * runtimeForceVectorScale, showRuntimeForceVectors && showOscillationVector);
+            UpdateRuntimeVectorRenderer(noiseVectorRenderer, origin, lastNoiseContribution * runtimeForceVectorScale, showRuntimeNoiseVectors && showNoiseVector);
+            UpdateRuntimeVectorRenderer(totalForceVectorRenderer, origin, lastTotalForce * runtimeForceVectorScale, showRuntimeForceVectors && showTotalForceVector);
 
-            UpdateRuntimeNoiseProbes(showRuntimeNoiseVectors);
+            UpdateRuntimeNoiseProbes(showRuntimeNoiseVectors && showNoiseProbeVectors);
         }
 
         private void EnsureRuntimeVisualizationObjects()
@@ -669,6 +684,7 @@ namespace ljk
         {
             isAvoidingObstacle = false;
             obstacleAvoidanceStrength = 0f;
+            avoidanceSideTimer = 0f;
             targetAvoidanceRollAngle = 0f;
             currentAvoidanceRollAngle = Mathf.Lerp(currentAvoidanceRollAngle, 0f, Time.fixedDeltaTime * rollRecoverySpeed);
             lastAvoidanceForce = Vector3.Lerp(lastAvoidanceForce, Vector3.zero, Time.fixedDeltaTime * 6f);
@@ -702,7 +718,8 @@ namespace ljk
         {
             int sampleCount = Mathf.Max(3, rayCount);
             float halfAngle = Mathf.Max(5f, obstacleDetectionAngle);
-            Vector3 accumulatedDirection = Vector3.zero;
+            Vector3 accumulatedAway = Vector3.zero;
+            float sidePreference = 0f;
             float strongestThreat = 0f;
             bool detected = false;
 
@@ -729,13 +746,20 @@ namespace ljk
                     distanceWeight *= emergencyAvoidanceMultiplier;
                 }
 
-                Vector3 planarAway = Vector3.ProjectOnPlane(transform.position - hit.point, Vector3.up).normalized;
+                Vector3 planarAway = Vector3.ProjectOnPlane(hit.normal, Vector3.up);
+                if (planarAway.sqrMagnitude < 0.001f)
+                {
+                    planarAway = Vector3.ProjectOnPlane(transform.position - hit.point, Vector3.up);
+                }
+
+                planarAway = planarAway.normalized;
                 if (planarAway.sqrMagnitude < 0.001f)
                 {
                     planarAway = angle >= 0f ? -transform.right : transform.right;
                 }
 
-                accumulatedDirection += (planarAway + Vector3.up * 0.2f) * distanceWeight;
+                accumulatedAway += planarAway * distanceWeight;
+                sidePreference += -Mathf.Sign(Mathf.Abs(angle) < 0.1f ? Vector3.Dot(planarAway, transform.right) : angle) * distanceWeight;
                 strongestThreat = Mathf.Max(strongestThreat, distanceWeight);
                 detected = true;
 
@@ -753,18 +777,41 @@ namespace ljk
                 targetAvoidanceRollAngle = 0f;
                 currentAvoidanceRollAngle = Mathf.Lerp(currentAvoidanceRollAngle, 0f, Time.fixedDeltaTime * rollRecoverySpeed);
                 lastAvoidanceForce = Vector3.Lerp(lastAvoidanceForce, Vector3.zero, Time.fixedDeltaTime * 4f);
+                avoidanceSideTimer = Mathf.Max(0f, avoidanceSideTimer - Time.fixedDeltaTime);
                 return lastAvoidanceForce;
             }
 
-            Vector3 desiredAvoidance = accumulatedDirection.normalized * strongestThreat;
-            lastAvoidanceForce = Vector3.Lerp(lastAvoidanceForce, desiredAvoidance, Time.fixedDeltaTime * 8f);
+            if (avoidanceSideTimer <= 0f && Mathf.Abs(sidePreference) > 0.05f)
+            {
+                avoidanceSideSign = Mathf.Sign(sidePreference);
+                avoidanceSideTimer = Mathf.Max(0.1f, avoidanceSideHoldTime);
+            }
+            else
+            {
+                avoidanceSideTimer = Mathf.Max(0f, avoidanceSideTimer - Time.fixedDeltaTime);
+            }
+
+            Vector3 awayDirection = accumulatedAway.sqrMagnitude > 0.001f ? accumulatedAway.normalized : -transform.forward;
+            Vector3 tangentDirection = transform.right * avoidanceSideSign;
+            Vector3 brakingDirection = Vector3.ProjectOnPlane(-velocity, Vector3.up);
+            if (brakingDirection.sqrMagnitude > 0.001f)
+            {
+                brakingDirection.Normalize();
+            }
+
+            Vector3 desiredAvoidance = awayDirection * 0.8f
+                + tangentDirection * Mathf.Lerp(0.35f, 1.1f, Mathf.Clamp01(strongestThreat))
+                + brakingDirection * Mathf.Clamp01(strongestThreat - 0.65f)
+                + Vector3.up * 0.25f;
+
+            desiredAvoidance = desiredAvoidance.normalized * strongestThreat;
+            lastAvoidanceForce = Vector3.Lerp(lastAvoidanceForce, desiredAvoidance, Time.fixedDeltaTime * 6f);
             isAvoidingObstacle = true;
             obstacleAvoidanceStrength = Mathf.Clamp01(strongestThreat);
 
             if (enableAvoidanceRoll)
             {
-                float sideSign = Mathf.Sign(Vector3.Dot(lastAvoidanceForce, transform.right));
-                targetAvoidanceRollAngle = -sideSign * avoidanceRollMaxAngle * obstacleAvoidanceStrength;
+                targetAvoidanceRollAngle = -avoidanceSideSign * avoidanceRollMaxAngle * obstacleAvoidanceStrength;
                 currentAvoidanceRollAngle = Mathf.Lerp(currentAvoidanceRollAngle, targetAvoidanceRollAngle, Time.fixedDeltaTime * avoidanceRollSpeed);
             }
 
