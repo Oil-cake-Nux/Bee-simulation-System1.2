@@ -154,6 +154,11 @@ namespace ljk
             get { return !UsesAutopilot && beeTarget != null && beeTarget.IsPlayerCollecting; }
         }
 
+        private bool IsAutopilotHovering
+        {
+            get { return UsesAutopilot && beeTarget != null && beeTarget.IsHovering; }
+        }
+
         private BeeTargetController beeTarget;
         private Rigidbody rb;
         private Vector3 acceleration = Vector3.zero;
@@ -262,8 +267,12 @@ namespace ljk
             float guidanceWeight = UsesAutopilot
                 ? Mathf.Lerp(1f, 1f - avoidanceGuidanceReduction, obstacleAvoidanceStrength)
                 : (IsPlayerCollecting ? 1.25f : 0f);
-            float buzzWeight = UsesAutopilot ? oscillationForceWeight : Mathf.Max(1.2f, oscillationForceWeight * 2.4f);
-            float noiseWeight = UsesAutopilot ? curlNoiseWeight : Mathf.Max(1.4f, curlNoiseWeight * 1.55f);
+            float buzzWeight = UsesAutopilot
+                ? (IsAutopilotHovering ? oscillationForceWeight * 0.45f : oscillationForceWeight)
+                : Mathf.Max(1.2f, oscillationForceWeight * 2.4f);
+            float noiseWeight = UsesAutopilot
+                ? (IsAutopilotHovering ? curlNoiseWeight * 0.12f : curlNoiseWeight)
+                : Mathf.Max(1.4f, curlNoiseWeight * 1.55f);
 
             lastPlayerControlContribution = controlForce * controlWeight;
             lastGuidanceContribution = guidanceForce * guidanceWeight;
@@ -587,12 +596,12 @@ namespace ljk
             {
                 if (beeTarget.IsHovering)
                 {
-                    return beeTarget.HoverCenter.y + beeTarget.hoverHeight;
+                    return beeTarget.HoverCenter.y;
                 }
 
                 if (beeTarget.currentTarget != null)
                 {
-                    return beeTarget.currentTarget.position.y + Mathf.Max(1.5f, beeTarget.hoverHeight * 0.5f);
+                    return beeTarget.AutopilotCollectPoint.y;
                 }
             }
 
@@ -655,6 +664,12 @@ namespace ljk
 
             float horizontalSpeedLimit = UsesAutopilot ? maxSpeed : maxSpeed * (playerBoostInput ? boostMultiplier : 1f);
             float verticalSpeedLimit = UsesAutopilot ? horizontalSpeedLimit * 0.6f : maxClimbSpeed;
+
+            if (IsAutopilotHovering && beeTarget != null)
+            {
+                horizontalSpeedLimit = Mathf.Min(horizontalSpeedLimit, Mathf.Max(0.45f, beeTarget.hoverSpeed * 1.3f));
+                verticalSpeedLimit = Mathf.Min(verticalSpeedLimit, 0.7f);
+            }
 
             Vector3 horizontalVelocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
             float verticalSpeed = Vector3.Dot(velocity, Vector3.up);
@@ -896,8 +911,15 @@ namespace ljk
 
             if (UsesAutopilot && beeTarget != null && beeTarget.currentTarget != null)
             {
-                float distanceToTarget = Vector3.Distance(transform.position, beeTarget.currentTarget.position);
-                distanceFactor = Mathf.Clamp01(distanceToTarget / Mathf.Max(0.01f, noiseInfluenceRadius));
+                if (beeTarget.IsHovering)
+                {
+                    distanceFactor = 0.08f;
+                }
+                else
+                {
+                    float distanceToTarget = Vector3.Distance(transform.position, beeTarget.currentTarget.position);
+                    distanceFactor = Mathf.Clamp01(distanceToTarget / Mathf.Max(0.01f, noiseInfluenceRadius));
+                }
             }
             else
             {

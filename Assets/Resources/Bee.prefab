@@ -4488,14 +4488,19 @@ MonoBehaviour:
   stayDuration: 3
   currentTarget: {fileID: 0}
   stoppingDistance: 3
-  hoverHeight: 4
-  hoverRadius: 2
-  hoverSpeed: 0.3
-  hoverSmoothness: 2
+  hoverHeight: 1.2
+  hoverRadius: 0.35
+  hoverSpeed: 0.9
+  hoverSmoothness: 5
   enableHover: 1
   minHoverDistance: 0.3
-  maxHoverDistance: 3
-  heightAdjustSpeed: 1.5
+  maxHoverDistance: 1.5
+  heightAdjustSpeed: 3
+  hoverSettleRadius: 0.75
+  hoverBrakeDamping: 3
+  hoverBobAmplitude: 0.1
+  useTargetRendererBounds: 1
+  hoverSurfaceClearance: 0.35
 --- !u!1 &5511781842748956485
 GameObject:
   m_ObjectHideFlags: 0

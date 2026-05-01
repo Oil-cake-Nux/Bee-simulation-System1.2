@@ -21,12 +21,17 @@ namespace ljk
         public float hoverRadius = 1.5f;
         public float hoverSpeed = 0.8f;
         public float hoverSmoothness = 2f;
-        public bool enableHover = false;
+        public bool enableHover = true;
 
         [Header("悬停行为")]
         public float minHoverDistance = 0.3f;
         public float maxHoverDistance = 3f;
         public float heightAdjustSpeed = 1.5f;
+        public float hoverSettleRadius = 0.65f;
+        public float hoverBrakeDamping = 2.5f;
+        public float hoverBobAmplitude = 0.12f;
+        public bool useTargetRendererBounds = true;
+        public float hoverSurfaceClearance = 0.35f;
 
         [Header("玩家采集")]
         public bool enablePlayerCollect = true;
@@ -98,6 +103,11 @@ namespace ljk
             get { return playerCollectPoint; }
         }
 
+        public Vector3 AutopilotCollectPoint
+        {
+            get { return GetAutopilotCollectPoint(); }
+        }
+
         private readonly List<Transform> inactiveTargets = new List<Transform>();
         private readonly List<Transform> visitedTargetsThisCycle = new List<Transform>();
         private readonly List<Transform> learnedRoute = new List<Transform>();
@@ -152,9 +162,11 @@ namespace ljk
                 return;
             }
 
-            float distance = Vector3.Distance(transform.position, currentTarget.position);
+            Vector3 collectPoint = GetAutopilotCollectPoint();
+            float distance = Vector3.Distance(transform.position, collectPoint);
+            float horizontalDistance = Vector3.ProjectOnPlane(transform.position - currentTarget.position, Vector3.up).magnitude;
 
-            if (enableHover && !isHovering && distance <= stoppingDistance)
+            if (enableHover && !isHovering && (distance <= stoppingDistance || horizontalDistance <= stoppingDistance))
             {
                 StartHovering();
             }
@@ -170,7 +182,15 @@ namespace ljk
             }
 
             UpdateHoverBehavior();
-            stayTimer += Time.deltaTime;
+
+            if (HasSettledAtHoverPoint())
+            {
+                stayTimer += Time.deltaTime;
+            }
+            else
+            {
+                stayTimer = Mathf.Max(0f, stayTimer - Time.deltaTime * 0.5f);
+            }
 
             if (stayTimer >= stayDuration)
             {
@@ -233,7 +253,8 @@ namespace ljk
                 return CalculateHoverForce();
             }
 
-            Vector3 toTarget = currentTarget.position - transform.position;
+            Vector3 seekPoint = enableHover ? GetAutopilotCollectPoint() : currentTarget.position;
+            Vector3 toTarget = seekPoint - transform.position;
             float distance = toTarget.magnitude;
             if (distance < 0.001f)
             {
@@ -392,6 +413,62 @@ namespace ljk
                    verticalOffset <= playerCollectMaxHeight;
         }
 
+        private Vector3 GetAutopilotCollectPoint()
+        {
+            if (currentTarget == null)
+            {
+                return transform.position;
+            }
+
+            return GetTargetSurfaceCollectPoint(currentTarget, hoverHeight);
+        }
+
+        private Vector3 GetTargetSurfaceCollectPoint(Transform targetTransform, float fallbackHeight)
+        {
+            if (targetTransform == null)
+            {
+                return transform.position;
+            }
+
+            Bounds targetBounds;
+            if (useTargetRendererBounds && TryGetTargetBounds(targetTransform, out targetBounds))
+            {
+                Vector3 collectPoint = targetBounds.center;
+                collectPoint.y = targetBounds.max.y + hoverSurfaceClearance;
+                return collectPoint;
+            }
+
+            return targetTransform.position + Vector3.up * fallbackHeight;
+        }
+
+        private bool TryGetTargetBounds(Transform targetTransform, out Bounds targetBounds)
+        {
+            Renderer[] renderers = targetTransform.GetComponentsInChildren<Renderer>();
+            targetBounds = new Bounds(targetTransform.position, Vector3.zero);
+            bool hasBounds = false;
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer targetRenderer = renderers[i];
+                if (targetRenderer == null || !targetRenderer.enabled)
+                {
+                    continue;
+                }
+
+                if (!hasBounds)
+                {
+                    targetBounds = targetRenderer.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    targetBounds.Encapsulate(targetRenderer.bounds);
+                }
+            }
+
+            return hasBounds;
+        }
+
         private void StartHovering()
         {
             if (currentTarget == null)
@@ -401,34 +478,38 @@ namespace ljk
 
             isHovering = true;
             stayTimer = 0f;
-            hoverCenter = currentTarget.position;
-            currentHoverHeight = hoverCenter.y + hoverHeight;
+            hoverCenter = GetAutopilotCollectPoint();
+            currentHoverHeight = GetAutopilotCollectPoint().y;
             hoverOrbitAngle = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
             UpdateHoverTarget(true);
         }
 
         private void UpdateHoverBehavior()
         {
-            float targetHeight = hoverCenter.y + hoverHeight;
+            hoverCenter = currentTarget != null ? GetAutopilotCollectPoint() : hoverCenter;
+
+            float targetHeight = hoverCenter.y;
             currentHoverHeight = Mathf.Lerp(currentHoverHeight, targetHeight, Time.deltaTime * heightAdjustSpeed);
             hoverOrbitAngle += hoverSpeed * Time.deltaTime;
 
             UpdateHoverTarget(false);
 
             float distanceToHoverTarget = Vector3.Distance(transform.position, currentHoverTarget);
-            if (distanceToHoverTarget < minHoverDistance)
+            if (distanceToHoverTarget < minHoverDistance * 0.5f)
             {
                 hoverOrbitAngle += Mathf.PI * 0.5f;
-                UpdateHoverTarget(true);
             }
         }
 
         private void UpdateHoverTarget(bool snap)
         {
+            float visitRadius = Mathf.Min(hoverRadius, Mathf.Max(0.05f, stoppingDistance * 0.35f));
+            float verticalBob = Mathf.Sin(hoverOrbitAngle * 2.1f) * hoverBobAmplitude;
+
             Vector3 desiredOffset = new Vector3(
-                Mathf.Cos(hoverOrbitAngle) * hoverRadius,
-                currentHoverHeight - hoverCenter.y,
-                Mathf.Sin(hoverOrbitAngle) * hoverRadius
+                Mathf.Cos(hoverOrbitAngle) * visitRadius,
+                currentHoverHeight - hoverCenter.y + verticalBob,
+                Mathf.Sin(hoverOrbitAngle * 0.85f) * visitRadius
             );
 
             Vector3 desiredTarget = hoverCenter + desiredOffset;
@@ -446,23 +527,27 @@ namespace ljk
         {
             Vector3 toHoverTarget = currentHoverTarget - transform.position;
             float distance = toHoverTarget.magnitude;
-            if (distance < 0.001f)
+            if (distance < 0.001f && beeSimulation.velocity.sqrMagnitude < 0.001f)
             {
                 return Vector3.zero;
             }
 
-            float desiredSpeed = hoverSpeed;
-            if (distance < maxHoverDistance)
-            {
-                desiredSpeed = Mathf.Lerp(0.1f, hoverSpeed, Mathf.Clamp01(distance / Mathf.Max(0.01f, maxHoverDistance)));
-            }
+            float desiredSpeed = Mathf.Lerp(0f, hoverSpeed, Mathf.Clamp01(distance / Mathf.Max(0.01f, maxHoverDistance)));
 
-            Vector3 desiredVelocity = toHoverTarget.normalized * desiredSpeed;
+            Vector3 desiredVelocity = distance > 0.001f ? toHoverTarget.normalized * desiredSpeed : Vector3.zero;
             Vector3 steeringForce = (desiredVelocity - beeSimulation.velocity) * beeSimulation.steeringPD_Kp;
-            Vector3 positionCorrection = toHoverTarget * 0.5f;
-            Vector3 totalForce = (steeringForce + positionCorrection) * beeSimulation.targetAttractionWeight;
+            Vector3 positionCorrection = toHoverTarget * 1.15f;
+            Vector3 dampingForce = -beeSimulation.velocity * hoverBrakeDamping;
+            Vector3 totalForce = (steeringForce + positionCorrection + dampingForce) * beeSimulation.targetAttractionWeight;
 
-            return Vector3.ClampMagnitude(totalForce, beeSimulation.maxForce * 0.5f);
+            return Vector3.ClampMagnitude(totalForce, beeSimulation.maxForce * 0.8f);
+        }
+
+        private bool HasSettledAtHoverPoint()
+        {
+            Vector3 toHoverTarget = currentHoverTarget - transform.position;
+            float allowedDistance = Mathf.Max(hoverSettleRadius, minHoverDistance);
+            return toHoverTarget.magnitude <= allowedDistance;
         }
 
         public Vector3 CalculatePlayerCollectForce()
@@ -507,7 +592,7 @@ namespace ljk
                 return;
             }
 
-            hoverCenter = currentTarget.position;
+            hoverCenter = GetTargetSurfaceCollectPoint(currentTarget, playerCollectHeightOffset);
             playerCollectPhase += Time.deltaTime * Mathf.Max(0.1f, hoverSpeed * 2.4f);
 
             Vector3 microOffset = new Vector3(
@@ -518,7 +603,7 @@ namespace ljk
 
             microOffset.y = Mathf.Sin(playerCollectPhase * 2.2f) * playerCollectBobAmplitude;
 
-            Vector3 desiredPoint = hoverCenter + Vector3.up * playerCollectHeightOffset + microOffset;
+            Vector3 desiredPoint = hoverCenter + microOffset;
 
             if (snap)
             {
